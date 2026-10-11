@@ -101,9 +101,33 @@
   function loadSave() {
     try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch (e) { return {}; }
   }
-  const save = Object.assign({ level: 1, unlocked: 1, stars: {}, coins: 200, muted: false, speed: 1, ctrl: 'joy', bag: {}, granted: {}, skins: ['classic'], skin: 'classic', fxs: ['none'], fx: 'none', daily: {}, dex: {} }, loadSave());
+  const SAVE_DEFAULTS = () => ({ level: 1, unlocked: 1, stars: {}, coins: 200, muted: false, speed: 1, ctrl: 'joy', bag: {}, granted: {}, skins: ['classic'], skin: 'classic', fxs: ['none'], fx: 'none', daily: {}, dex: {} });
+  const save = Object.assign(SAVE_DEFAULTS(), loadSave());
   function persist() {
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* 無痕模式等情況忽略 */ }
+  }
+
+  // ---------- 存檔轉移 ----------
+  // 存檔放在瀏覽器裡、綁網址，換網址就讀不到，所以用「存檔碼」搬：HI1. + base64(JSON)
+  const NEW_HOME = 'https://kevin191211.github.io/hole-it/';
+  const saveCode = () => 'HI1.' + btoa(unescape(encodeURIComponent(JSON.stringify(save))));
+  function readCode(code) {
+    try {
+      const raw = String(code || '').trim().replace(/^HI1\./, '');
+      const data = JSON.parse(decodeURIComponent(escape(atob(raw))));
+      if (!data || typeof data !== 'object' || !(data.unlocked >= 1) || typeof data.coins !== 'number') return null;
+      return data;
+    } catch (e) { return null; }
+  }
+  function applySave(data) {
+    for (const k of Object.keys(save)) delete save[k];
+    Object.assign(save, SAVE_DEFAULTS(), data);
+    persist();
+  }
+  // 舊網址（Netlify）：帶著存檔跳到新網址，新網址那邊自動匯入
+  if (/\.netlify\.app$/.test(location.hostname)) {
+    location.replace(NEW_HOME + '#save=' + encodeURIComponent(saveCode()));
+    return;
   }
   A.setMuted(save.muted);
 
@@ -2212,9 +2236,79 @@
   const BUILD = document.documentElement.dataset.build || '本機開發版';
   $('appVersion').textContent = `版本 ${VERSION}・${BUILD}`;
 
+  // 存檔轉移畫面：複製自己的存檔碼，或貼上別處的存檔碼
+  const saveSummary = (d) => `第 ${d.unlocked} 關・${d.coins} 金幣`;
+  function transferModal(msg) {
+    showModal(`
+      <h2>轉移存檔</h2>
+      <div class="m-note">換手機、換瀏覽器或換網址時，用存檔碼把進度和金幣搬過去</div>
+      <div class="m-sec">我的存檔碼（${saveSummary(save)}）</div>
+      <textarea class="save-code" readonly id="myCode">${saveCode()}</textarea>
+      <button class="big-btn ghost" data-act="copyCode">📋 複製存檔碼</button>
+      <div class="m-sec">貼上別處的存檔碼</div>
+      <textarea class="save-code" id="inCode" placeholder="HI1.…"></textarea>
+      <div class="shop-msg" id="shopMsg">${msg || ''}</div>
+      <div class="m-btns">
+        <button class="big-btn" data-act="importCode">匯入</button>
+        <button class="big-btn ghost" data-act="close">關閉</button>
+      </div>`);
+  }
+  // 匯入前確認：會蓋掉這台的進度
+  function confirmImport(data) {
+    G.pendingSave = data;
+    showModal(`
+      <h2>匯入存檔？</h2>
+      <div class="m-note">這台目前：${saveSummary(save)}</div>
+      <div class="m-note">要匯入的：<b>${saveSummary(data)}</b></div>
+      <div class="m-note">匯入後這台目前的進度會被取代</div>
+      <div class="m-btns">
+        <button class="big-btn" data-act="applyImport">匯入</button>
+        <button class="big-btn ghost" data-act="close">取消</button>
+      </div>`);
+  }
+  function importDone() {
+    A.setMuted(save.muted);
+    showMenu();
+    showModal(`<h2>存檔轉移完成！</h2><div class="m-note">${saveSummary(save)}</div>
+      <div class="m-btns"><button class="big-btn" data-act="close">開始玩</button></div>`);
+  }
+  Object.assign(actions, {
+    copyCode() {
+      const t = $('myCode');
+      t.select();
+      const done = () => { $('shopMsg').style.color = 'var(--good)'; $('shopMsg').textContent = '已複製'; };
+      if (navigator.clipboard) navigator.clipboard.writeText(t.value).then(done, () => document.execCommand('copy') && done());
+      else if (document.execCommand('copy')) done();
+    },
+    importCode() {
+      const data = readCode($('inCode').value);
+      if (!data) return shopMsg('存檔碼不正確，請整段複製貼上');
+      confirmImport(data);
+    },
+    applyImport() {
+      if (!G.pendingSave) return;
+      applySave(G.pendingSave);
+      G.pendingSave = null;
+      importDone();
+    },
+  });
+  $('btnTransfer').addEventListener('click', () => { A.unlock(); A.click(); transferModal(); });
+
   // ---------- 啟動 ----------
   resize();
   showMenu();
+  // 從舊網址跳過來時網址帶著 #save=存檔碼：這台還沒玩過（或進度比較少）就直接匯入，否則先問
+  if (location.hash.startsWith('#save=')) {
+    const data = readCode(decodeURIComponent(location.hash.slice(6)));
+    history.replaceState(null, '', location.pathname + location.search);
+    if (data) {
+      const fresh = save.unlocked <= 1 && !Object.keys(save.stars || {}).length;
+      if (fresh || data.unlocked >= save.unlocked) {
+        applySave(data);
+        importDone();
+      } else confirmImport(data);
+    }
+  }
   // 測試用：網址加 ?level=N 直接開第 N 關（同時解鎖到該關）
   const testLv = parseInt(new URLSearchParams(location.search).get('level'), 10);
   if (testLv >= 1) {
