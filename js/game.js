@@ -17,6 +17,9 @@
   };
   const SIZE_STEP = 0.3; // 每升一級，黑洞半徑增加起始半徑的 30%
   const CONTINUE_COST = 50;
+  // 關卡出包的補償：修好後第一次過該關多送金幣（每關只送一次）
+  // 第 111 關：木板被木箱、球、船蓋住，場上只看得到 6 塊，無法過關
+  const COMPENSATE = { 111: 5000 };
   // 黑洞造型（外框顏色）：anim 為會變色的款式
   const SKINS = [
     { id: 'classic', name: '經典銀', price: 0, color: 0xd3d8e2 },
@@ -1790,6 +1793,13 @@
     const timeBonus = Math.ceil(G.time);
     const final = G.score + timeBonus;
     if (G.daily) return winDaily(stars, final, timeBonus);
+    save.comp = save.comp || {};
+    const comp = !save.comp[G.n] && COMPENSATE[G.n] || 0;
+    if (comp) {
+      // 補償直接入帳跟著過關一起存檔，不等動畫，避免關掉頁面就拿不到
+      save.comp[G.n] = 1;
+      save.coins += comp;
+    }
     save.best = save.best || {};
     const record = final > (save.best[G.n] || 0);
     if (record) save.best[G.n] = final;
@@ -1809,7 +1819,8 @@
         <div class="final-score">${final}<small>分</small></div>
         <div class="m-note">吃到 ${G.score} 分 ＋ 剩餘 ${Math.ceil(G.time)} 秒加分 ${timeBonus}</div>
         <div class="m-note">${record ? '<b class="record">新紀錄！</b>' : `最佳紀錄 ${save.best[G.n]} 分`}</div>
-        <div class="reward">+${reward} <i class="coin"></i></div>
+        ${comp ? `<div class="m-note"><b class="record">這關之前有問題害你過不了，補償 ${comp} 金幣！</b></div>` : ''}
+        <div class="reward">+${reward + comp} <i class="coin"></i></div>
         <div class="m-btns">
           <button class="big-btn" data-act="next">下一關</button>
           <div class="m-row">

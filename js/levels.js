@@ -442,13 +442,59 @@
     return drop.size ? items.filter((it) => !drop.has(it)) : items;
   }
 
+  // 任務物被更高的東西蓋住：長條形物品（木板、球拍）擺放時只用寬度判斷間距，常被木箱、球、船壓在底下看不到。
+  // 自動生成的關卡把被蓋住的任務物搬到原位附近的空地
+  const trueR = (it) => H.KINDS[it.kind].r * (it.s || 1);
+  const trueH = (it) => H.getGeo(it.kind, it.color).boundingBox.max.y * (it.s || 1);
+  // 被蓋住的比例：在物品腳印上取樣，落在更高物品腳印裡的點占幾成
+  const SAMPLE = [[0, 0]].concat([0.5, 0.9].flatMap((k) => [0, 1, 2, 3, 4, 5].map((i) => [k * Math.cos(i + k), k * Math.sin(i + k)])));
+  function coverFrac(it, x, z, items) {
+    const r = trueR(it), h = trueH(it);
+    const tall = items.filter((o) => o !== it && o.y === 0 && trueH(o) > h * 1.2 && Math.hypot(o.x - x, o.z - z) < trueR(o) + r);
+    if (!tall.length) return 0;
+    const hit = SAMPLE.filter(([u, v]) => tall.some((o) => Math.hypot(o.x - x - u * r, o.z - z - v * r) < trueR(o) * 0.9)).length;
+    return hit / SAMPLE.length;
+  }
+  const isGoal = (L, it) => L.goals.some(([k, , c]) => k === it.kind && (!c || it.color === c));
+  function hiddenGoals(L, items) {
+    return items.filter((it) => it.y === 0 && isGoal(L, it) && coverFrac(it, it.x, it.z, items) >= 0.3);
+  }
+  function unhide(L, items) {
+    if (L.official || !L.goals) return items;
+    const R = rng(L.seed + 7);
+    const half = L.size / 2 - 0.6;
+    const start = L.start || [0, 0];
+    const avoid = items.filter((it) => (L.avoid || []).some(([k, c]) => it.kind === k && (!c || it.color === c)));
+    const free = (it, x, z) => {
+      const r = trueR(it);
+      if (Math.abs(x) > half - r || Math.abs(z) > half - r) return false;
+      if (Math.hypot(x - start[0], z - start[1]) < L.holeR + 0.6 + r) return false;
+      if ((L.walls || []).some(([wx, wz, ww, wd]) => Math.abs(x - wx) < ww / 2 + r && Math.abs(z - wz) < wd / 2 + r)) return false;
+      if (avoid.some((a) => Math.hypot(a.x - x, a.z - z) < AVOID_CLEAR + r)) return false;
+      if (coverFrac(it, x, z, items) > 0) return false;
+      return items.every((o) => o === it || o.y > 0 || Math.hypot(o.x - x, o.z - z) >= (trueR(o) + r) * 0.7);
+    };
+    for (const it of hiddenGoals(L, items)) {
+      // 從原位往外一圈圈找，盡量留在同一區
+      for (let t = 0; t < 400; t++) {
+        const d = 0.6 + t * 0.06, a = R() * PI * 2;
+        const x = it.x + Math.cos(a) * d, z = it.z + Math.sin(a) * d;
+        if (!free(it, x, z)) continue;
+        it.x = x;
+        it.z = z;
+        break;
+      }
+    }
+    return items;
+  }
+
   function layout(L) {
     const F = Field(L);
     L.build(F);
     L.walls = F.walls;
     L.spinners = F.spinners;
     const items = L.avoid && L.avoid.length && L.goals ? separate(L, F.items) : F.items;
-    return trimToGoals(L, items);
+    return unhide(L, trimToGoals(L, items));
   }
 
   // ---------- 手工關卡 ----------
@@ -1153,5 +1199,5 @@
     return L;
   }
 
-  Object.assign(H, { rng, FLOORS, groundTexture, layout, getLevel, getDaily, simulate, checkReach, SPEED_K, LEVEL_COUNT: LEVELS.length });
+  Object.assign(H, { rng, FLOORS, groundTexture, layout, hiddenGoals, getLevel, getDaily, simulate, checkReach, SPEED_K, LEVEL_COUNT: LEVELS.length });
 })();
