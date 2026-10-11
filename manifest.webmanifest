@@ -1,0 +1,12 @@
+{
+  "name": "黑洞吞吞 網頁版",
+  "short_name": "黑洞吞吞",
+  "start_url": "./index.html",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#2b2350",
+  "theme_color": "#2b2350",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-Hant" data-version="1.20" data-build="2026/10/11 10:39">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <meta name="theme-color" content="#2b2350">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="黑洞吞吞">
+  <title>黑洞吞吞 網頁版</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css?v=1.20">
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div id="flash"></div>
+
+  <!-- 遊戲中 HUD（照官方實機版面） -->
+  <div id="hud" class="hidden">
+    <div class="hud-top">
+      <div class="hud-row">
+        <div class="level-tag" id="hudLevelTag">第 <span id="hudLevel">1</span> 關</div>
+        <div class="timer-box">
+          <div class="timer" id="hudTimerWrap">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8.5" fill="#fff"/><circle cx="12" cy="13" r="8.5" fill="none" stroke="#ff8a00" stroke-width="2.6"/><path d="M12 8.5v4.5l3 2" fill="none" stroke="#33415c" stroke-width="2.4" stroke-linecap="round"/><circle cx="5" cy="5" r="2.6" fill="#ff8a00"/><circle cx="19" cy="5" r="2.6" fill="#ff8a00"/></svg>
+            <span id="hudTimer">00:00</span>
+          </div>
+          <div class="time-track"><div id="timeBar"></div></div>
+        </div>
+      </div>
+      <div class="score-pill"><span id="hudScore">0</span> 分</div>
+    </div>
+    <div class="goals" id="hudGoals"></div>
+    <div class="size-label hidden" id="sizeLabel">等級 1</div>
+    <div class="time-label hidden" id="timeLabel">0:00</div>
+    <div class="drag-hint" id="dragHint">
+      <div class="finger"></div>
+      <span>按住往想去的方向推</span>
+    </div>
+    <div class="joy" id="joy"><div class="joy-knob" id="joyKnob"></div></div>
+    <div class="bottom-bar">
+      <button class="round-btn pause-btn" id="btnPause" aria-label="暫停">
+        <svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1.5"/><rect x="14" y="5" width="4" height="14" rx="1.5"/></svg>
+      </button>
+      <div class="boosters" id="boosters">
+        <button class="booster" data-boost="grow" aria-label="變大藥水"><span class="b-ic">🧪</span><span class="b-badge"></span></button>
+        <button class="booster" data-boost="magnet" aria-label="閃電吸取"><span class="b-ic">⚡</span><span class="b-badge"></span></button>
+        <button class="booster" data-boost="zoom" aria-label="放大鏡"><span class="b-ic">🔍</span><span class="b-badge"></span></button>
+        <button class="booster" data-boost="freeze" aria-label="冰凍時間"><span class="b-ic">❄️</span><span class="b-badge"></span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 主選單 -->
+  <div id="menu" class="screen hidden">
+    <div class="menu-top">
+      <div class="coin-pill"><i class="coin"></i><span id="menuCoins">0</span></div>
+      <button class="round-btn" id="btnSound" aria-label="音效"></button>
+    </div>
+    <div class="logo">
+      <h1>黑洞<span>吞吞</span></h1>
+      <p>黑洞解謎・網頁版</p>
+    </div>
+    <div class="menu-bottom">
+      <button class="big-btn green" id="btnPlay">開始 第 <span id="menuLevel">1</span> 關</button>
+      <div class="menu-row">
+        <button class="big-btn ghost" id="btnDaily">📅 每日挑戰</button>
+        <button class="big-btn ghost" id="btnSkins">🎨 造型</button>
+        <button class="big-btn ghost" id="btnDex">📖 圖鑑</button>
+      </div>
+      <div class="level-panel">
+        <div class="panel-title">選擇關卡</div>
+        <div class="level-grid" id="levelGrid"></div>
+      </div>
+      <div class="version" id="appVersion"></div>
+    </div>
+  </div>
+
+  <div id="modal" class="modal hidden"><div class="card" id="modalCard"></div></div>
+  <div id="fx"></div>
+  <div id="rotate">
+    <div class="rot-ic">📱</div>
+    <p>請把手機轉回直向遊玩</p>
+  </div>
+
+  <script src="js/vendor/three.min.js?v=1.20"></script>
+  <script src="js/audio.js?v=1.20"></script>
+  <script src="js/objects.js?v=1.20"></script>
+  <script src="js/levels.js?v=1.20"></script>
+  <script src="js/game.js?v=1.20"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="35%" r="75%"><stop offset="0" stop-color="#9a74ff"/><stop offset="1" stop-color="#4a22b8"/></radialGradient>
+    <radialGradient id="h" cx="50%" cy="60%" r="55%"><stop offset="0.6" stop-color="#000"/><stop offset="1" stop-color="#2b2350"/></radialGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <ellipse cx="256" cy="300" rx="170" ry="82" fill="#fff"/>
+  <ellipse cx="256" cy="300" rx="158" ry="72" fill="url(#h)"/>
+  <path d="M232 150l60 0-30-90z" fill="#ff7a1a"/>
+  <rect x="222" y="148" width="80" height="14" rx="4" fill="#ff7a1a"/>
+  <rect x="246" y="100" width="32" height="14" fill="#fff"/>
+  <text x="256" y="455" text-anchor="middle" font-family="Microsoft JhengHei,PingFang TC,Noto Sans TC,sans-serif" font-weight="700" font-size="84" fill="#ffc83d">黑洞吞吞</text>
+</svg>
