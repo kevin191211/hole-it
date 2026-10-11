@@ -443,46 +443,117 @@
   }
 
   // 任務物被更高的東西蓋住：長條形物品（木板、球拍）擺放時只用寬度判斷間距，常被木箱、球、船壓在底下看不到。
-  // 自動生成的關卡把被蓋住的任務物搬到原位附近的空地
-  const trueR = (it) => H.KINDS[it.kind].r * (it.s || 1);
-  const trueH = (it) => H.getGeo(it.kind, it.color).boundingBox.max.y * (it.s || 1);
-  // 被蓋住的比例：在物品腳印上取樣，落在更高物品腳印裡的點占幾成
+  // 鏡頭固定從南邊（+z）斜看，每往上 1 單位視線往 +z 偏約 0.5，所以高的東西也會擋住它北邊的東西。
+  // 自動生成的關卡把被擋住的任務物搬到原位附近看得到的空地
+  const VIEW_K = 0.5;
   const SAMPLE = [[0, 0]].concat([0.5, 0.9].flatMap((k) => [0, 1, 2, 3, 4, 5].map((i) => [k * Math.cos(i + k), k * Math.sin(i + k)])));
-  function coverFrac(it, x, z, items) {
-    const r = trueR(it), h = trueH(it);
-    const tall = items.filter((o) => o !== it && o.y === 0 && trueH(o) > h * 1.2 && Math.hypot(o.x - x, o.z - z) < trueR(o) + r);
+  // 地面物品的格子索引：只查附近的格子，不然幾百個物品兩兩比對在手機上會卡好幾秒
+  function groundIndex(items) {
+    const CELL = 2, R = new Map(), Ht = new Map(), grid = new Map();
+    const key = (ix, iz) => ix * 10007 + iz;
+    const cellOf = (it) => key(Math.floor(it.x / CELL), Math.floor(it.z / CELL));
+    let maxR = 0, maxH = 0;
+    for (const it of items) {
+      const s = it.s || 1, r = H.KINDS[it.kind].r * s, h = H.getGeo(it.kind, it.color).boundingBox.max.y * s;
+      R.set(it, r);
+      Ht.set(it, h);
+      if (it.y !== 0) continue;
+      maxR = Math.max(maxR, r);
+      maxH = Math.max(maxH, h);
+      const k = cellOf(it);
+      if (!grid.has(k)) grid.set(k, []);
+      grid.get(k).push(it);
+    }
+    const ix = {
+      r: (it) => R.get(it), h: (it) => Ht.get(it), maxR, maxH,
+      move(it, x, z) {
+        const a = grid.get(cellOf(it));
+        a.splice(a.indexOf(it), 1);
+        it.x = x;
+        it.z = z;
+        const k = cellOf(it);
+        if (!grid.has(k)) grid.set(k, []);
+        grid.get(k).push(it);
+      },
+      // 半徑 d 範圍內的地面物品逐一丟給 fn，fn 回傳 true 就提早結束並回傳 true
+      some(x, z, d, fn) {
+        for (let a = Math.floor((x - d) / CELL); a <= Math.floor((x + d) / CELL); a++) {
+          for (let b = Math.floor((z - d) / CELL); b <= Math.floor((z + d) / CELL); b++) {
+            const list = grid.get(key(a, b));
+            if (list) for (const o of list) if (fn(o)) return true;
+          }
+        }
+        return false;
+      },
+    };
+    return ix;
+  }
+  // 被擋住的比例：在物品頂面取樣，看有幾成被更高的東西擋住（從正上方蓋住，或站在南邊擋住視線）
+  function coverFrac(ix, it, x, z) {
+    const r = ix.r(it), h = ix.h(it), tall = [];
+    ix.some(x, z, r + ix.maxR + VIEW_K * ix.maxH, (o) => {
+      if (o === it) return false;
+      const oh = ix.h(o), or = ix.r(o);
+      if (oh > h * 1.2 && Math.hypot(o.x - x, o.z - z) < or + r + VIEW_K * oh) tall.push([o.x, o.z, or * 0.9, oh]);
+      return false;
+    });
     if (!tall.length) return 0;
-    const hit = SAMPLE.filter(([u, v]) => tall.some((o) => Math.hypot(o.x - x - u * r, o.z - z - v * r) < trueR(o) * 0.9)).length;
+    const hit = SAMPLE.filter(([u, v]) => tall.some(([ox, oz, or, oh]) => [0, 0.5, 1].some((t) => {
+      const y = h + (oh - h) * t; // 視線在高度 y 時的位置
+      return Math.hypot(ox - x - u * r, oz - (z + v * r + VIEW_K * (y - h))) < or;
+    }))).length;
     return hit / SAMPLE.length;
   }
   const isGoal = (L, it) => L.goals.some(([k, , c]) => k === it.kind && (!c || it.color === c));
+  const HIDDEN = 0.3;
   function hiddenGoals(L, items) {
-    return items.filter((it) => it.y === 0 && isGoal(L, it) && coverFrac(it, it.x, it.z, items) >= 0.3);
+    const ix = groundIndex(items);
+    return items.filter((it) => it.y === 0 && isGoal(L, it) && coverFrac(ix, it, it.x, it.z) >= HIDDEN);
   }
   function unhide(L, items) {
     if (L.official || !L.goals) return items;
     const R = rng(L.seed + 7);
     const half = L.size / 2 - 0.6;
     const start = L.start || [0, 0];
+    const ix = groundIndex(items);
     const avoid = items.filter((it) => (L.avoid || []).some(([k, c]) => it.kind === k && (!c || it.color === c)));
-    const free = (it, x, z) => {
-      const r = trueR(it);
+    const goals = new Set(items.filter((it) => it.y === 0 && isGoal(L, it)));
+    // loose：最後手段，可以壓在比自己矮很多的東西上（例如大托盤壓著小網球），那些不會擋到它
+    const free = (it, x, z, gap, loose) => {
+      const r = ix.r(it);
       if (Math.abs(x) > half - r || Math.abs(z) > half - r) return false;
       if (Math.hypot(x - start[0], z - start[1]) < L.holeR + 0.6 + r) return false;
       if ((L.walls || []).some(([wx, wz, ww, wd]) => Math.abs(x - wx) < ww / 2 + r && Math.abs(z - wz) < wd / 2 + r)) return false;
       if (avoid.some((a) => Math.hypot(a.x - x, a.z - z) < AVOID_CLEAR + r)) return false;
-      if (coverFrac(it, x, z, items) > 0) return false;
-      return items.every((o) => o === it || o.y > 0 || Math.hypot(o.x - x, o.z - z) >= (trueR(o) + r) * 0.7);
+      const h = ix.h(it);
+      if (ix.some(x, z, r + ix.maxR, (o) => o !== it && !(loose && ix.h(o) < h * 0.5) &&
+        Math.hypot(o.x - x, o.z - z) < (ix.r(o) + r) * gap)) return false;
+      if (coverFrac(ix, it, x, z) > 0) return false;
+      // 搬過去也不能反過來把別的任務物擋住
+      const ox = it.x, oz = it.z;
+      ix.move(it, x, z);
+      const blocks = ix.some(x, z, r + ix.maxR + VIEW_K * ix.h(it), (g) => g !== it && goals.has(g) && ix.h(g) * 1.2 < ix.h(it) &&
+        coverFrac(ix, g, g.x, g.z) >= HIDDEN);
+      ix.move(it, ox, oz);
+      return !blocks;
     };
-    for (const it of hiddenGoals(L, items)) {
-      // 從原位往外一圈圈找，盡量留在同一區
-      for (let t = 0; t < 400; t++) {
-        const d = 0.6 + t * 0.06, a = R() * PI * 2;
-        const x = it.x + Math.cos(a) * d, z = it.z + Math.sin(a) * d;
-        if (!free(it, x, z)) continue;
-        it.x = x;
-        it.z = z;
-        break;
+    for (const it of items.filter((x) => goals.has(x) && coverFrac(ix, x, x.x, x.z) >= HIDDEN)) {
+      // 從原位往外一圈圈找，盡量留在同一區；場地太擠找不到就放寬間距，最後整個場地隨便找
+      search: for (const [gap, loose] of [[0.7, false], [0.5, false], [0.5, true]]) {
+        for (let t = 0; t < (loose ? 600 : 300); t++) {
+          let x, z;
+          if (loose) {
+            x = (R() * 2 - 1) * half;
+            z = (R() * 2 - 1) * half;
+          } else {
+            const d = 0.6 + t * 0.05, a = R() * PI * 2;
+            x = it.x + Math.cos(a) * d;
+            z = it.z + Math.sin(a) * d;
+          }
+          if (!free(it, x, z, gap, loose)) continue;
+          ix.move(it, x, z);
+          break search;
+        }
       }
     }
     return items;
@@ -906,11 +977,22 @@
   }
 
   // o.idx / o.mode：每日挑戰用來指定難度與關型（n 只當亂數種子）
+  // 洗牌用 Fisher–Yates：用 sort(() => R() - 0.5) 的話，結果取決於瀏覽器的排序演算法，
+  // iPhone Safari 和 Chrome 會生出不一樣的關卡
+  function shuffleWith(R, arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(R() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
   function genLevel(n, o) {
     o = o || {};
     const R = rng(n * 977 + 3);
     const pick = (arr) => arr[Math.floor(R() * arr.length)];
-    const shuffle = (arr) => arr.slice().sort(() => R() - 0.5);
+    const shuffle = (arr) => shuffleWith(R, arr);
     const idx = o.idx || n - LEVELS.length;     // 1, 2, 3...
     // 難度曲線（全部跟著 idx 慢慢變）：
     //   層數 3 → 7（每 8 關 +1）、每層數量逐關增加、任務 3 → 5 項
@@ -992,7 +1074,7 @@
       // 擺放只能用 F.R（依 L.seed），遊戲重排時才會跟算任務時一模一樣
       const R = F.R;
       const pick = (arr) => arr[Math.floor(R() * arr.length)];
-      const shuffle = (arr) => arr.slice().sort(() => R() - 0.5);
+      const shuffle = (arr) => shuffleWith(R, arr);
       const st0 = (p) => Math.max(0.27, H.KINDS[p[0]].r * 2.05);
       const canStack = (p) => STACKABLE.includes(p[0]);
       const sx = L.start[0], sz = L.start[1];
@@ -1089,8 +1171,9 @@
         const free = shuffle(cells.filter(([a, b]) => !locked.has(a + ',' + b)));
         doors.forEach((d, i) => F.add('key', at(free[i][0]), at(free[i][1]), { color: d.color, yaw: R() * PI }));
         // 越深的格子（門後也算很深）放越大的東西
-        const deep = cells.slice().sort((p, q) => (maze.depth[p[0] + ',' + p[1]] + (locked.has(p[0] + ',' + p[1]) ? 9 : 0) + R())
-          - (maze.depth[q[0] + ',' + q[1]] + (locked.has(q[0] + ',' + q[1]) ? 9 : 0) + R()));
+        // 排序鍵先算好（比較函式裡呼叫 R() 一樣會因瀏覽器而異）
+        const depthKey = new Map(cells.map((c) => [c, maze.depth[c[0] + ',' + c[1]] + (locked.has(c[0] + ',' + c[1]) ? 9 : 0) + R()]));
+        const deep = cells.slice().sort((p, q) => depthKey.get(p) - depthKey.get(q));
         const cellOf = (k) => deep[Math.min(deep.length - 1, Math.floor(((k + R()) / nt) * deep.length))];
         for (let k = nt - 1; k >= 1; k--) {
           const { p, s } = tiers[k].kinds[0];
