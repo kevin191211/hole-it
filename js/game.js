@@ -27,6 +27,38 @@
     { id: 'galaxy', name: '星空紫', price: 500, color: 0x7e57c2 },
     { id: 'fire', name: '火焰', price: 700, anim: 'fire' },
     { id: 'rainbow', name: '彩虹', price: 900, anim: 'rainbow' },
+    // 扭蛋限定：商店不能直接買
+    { id: 'neon', name: '霓虹', gacha: true, anim: 'neon' },
+    { id: 'ice', name: '冰晶', gacha: true, color: 0x9be7ff },
+    { id: 'night', name: '暗夜', gacha: true, color: 0x3b2f7a },
+  ];
+  // 吞噬特效：東西掉進洞時噴出的粒子（tile＝粒子貼圖格子：0 星 1 愛心 2 泡泡 3 方塊 4 光點 5 雪花 6 金幣）
+  const EAT_FX = [
+    { id: 'none', name: '無特效', price: 0 },
+    { id: 'star', name: '星星', price: 300, tile: 0, colors: [0xffd54f, 0xfff59d, 0xffb300] },
+    { id: 'heart', name: '愛心', price: 300, tile: 1, colors: [0xff4f9a, 0xff80ab, 0xe91e63] },
+    { id: 'bubble', name: '泡泡', price: 400, tile: 2, colors: [0xb3e5fc, 0xe1f5fe, 0x80deea] },
+    { id: 'pixel', name: '像素', price: 500, tile: 3, colors: [0xff5252, 0xffeb3b, 0x69f0ae, 0x40c4ff, 0xe040fb] },
+    { id: 'firework', name: '煙火', price: 700, tile: 4, colors: [0xff5252, 0xffd740, 0x69f0ae, 0x40c4ff, 0xe040fb] },
+    { id: 'snow', name: '雪花', gacha: true, tile: 5, colors: [0xffffff, 0xe1f5fe, 0xb3e5fc] },
+    { id: 'coin', name: '金幣雨', gacha: true, tile: 6, colors: [0xffc928, 0xffe082] },
+  ];
+  // 開局加成：開始前在任務畫面勾選，只限這一局
+  const PRE = {
+    size: { name: '開局大一級', icon: '🕳️', cost: 100 },
+    time: { name: '多 15 秒', icon: '⏱️', cost: 80 },
+    arrow: { name: '目標指引', icon: '🧭', cost: 40 },
+  };
+  // 扭蛋：w 為權重（合計 100）；限定外框／特效都抽齊了就換成 300 金幣
+  const GACHA_COST = 100;
+  const GACHA = [
+    { w: 30, type: 'coins', n: 50 },
+    { w: 10, type: 'coins', n: 150 },
+    { w: 2, type: 'coins', n: 500 },
+    { w: 30, type: 'boost', n: 1 },
+    { w: 10, type: 'boost', n: 3 },
+    { w: 12, type: 'skin' },
+    { w: 6, type: 'fx' },
   ];
   const KEY_COLOR = { red: 0xe53935, blue: 0x1e88e5, yellow: 0xfdd835 };
   let spinTex = null;
@@ -50,6 +82,8 @@
     return spinTex;
   }
   const skinOf = (id) => SKINS.find((k) => k.id === id) || SKINS[0];
+  const fxOf = (id) => EAT_FX.find((k) => k.id === id) || EAT_FX[0];
+  const hex = (c) => '#' + c.toString(16).padStart(6, '0');
   const todayNum = () => Math.floor((Date.now() - new Date().getTimezoneOffset() * 60000) / 86400000);
   const todayKey = () => new Date(todayNum() * 86400000).toISOString().slice(0, 10);
   // 操控靈敏度：手指在地面上滑 1 格，黑洞移動幾格
@@ -64,7 +98,7 @@
   function loadSave() {
     try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch (e) { return {}; }
   }
-  const save = Object.assign({ level: 1, unlocked: 1, stars: {}, coins: 200, muted: false, speed: 1, ctrl: 'joy', bag: {}, granted: {}, skins: ['classic'], skin: 'classic', daily: {}, dex: {} }, loadSave());
+  const save = Object.assign({ level: 1, unlocked: 1, stars: {}, coins: 200, muted: false, speed: 1, ctrl: 'joy', bag: {}, granted: {}, skins: ['classic'], skin: 'classic', fxs: ['none'], fx: 'none', daily: {}, dex: {} }, loadSave());
   function persist() {
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* 無痕模式等情況忽略 */ }
   }
@@ -181,6 +215,238 @@
     ringArc.geometry = q > 0.005
       ? new T.RingGeometry(1.26, 1.38, 72, 1, PI / 2 - q * PI * 2, q * PI * 2).rotateX(-PI / 2) // 從正上方順時針長出
       : new T.BufferGeometry();
+  }
+
+  // 目標指引（開局加成）：洞口外圈的黃色箭頭，指向最近還沒吃的任務物
+  const arrowPivot = new T.Group();
+  {
+    const s = new T.Shape();
+    s.moveTo(0, 0.6);
+    s.lineTo(0.5, -0.1);
+    s.lineTo(0, 0.12);
+    s.lineTo(-0.5, -0.1);
+    s.closePath();
+    const m = new T.Mesh(new T.ShapeGeometry(s).rotateX(-PI / 2),
+      new T.MeshBasicMaterial({ color: 0xffe14d, transparent: true, opacity: 0.95, depthWrite: false, depthTest: false }));
+    m.position.y = 0.03;
+    m.renderOrder = 8;
+    arrowPivot.add(m);
+    arrowPivot.userData.mesh = m;
+  }
+  arrowPivot.visible = false;
+  rimGroup.add(arrowPivot);
+  let arrowT = 0, arrowTarget = null;
+  function updateArrow(dt) {
+    const on = G.arrow && (G.state === 'playing' || G.state === 'paused');
+    if (on && G.state === 'playing' && (arrowT -= dt) <= 0) {
+      arrowT = 0.25;
+      arrowTarget = null;
+      let best = 1e9;
+      for (const e of G.ents) {
+        if (e.state !== 0 || !e.goal || !goalOpen(e)) continue;
+        const d = (e.pos.x - hole.pos.x) ** 2 + (e.pos.z - hole.pos.z) ** 2;
+        if (d < best) { best = d; arrowTarget = e; }
+      }
+    }
+    const e = on && arrowTarget && arrowTarget.state === 0 ? arrowTarget : null;
+    const dx = e ? e.pos.x - hole.pos.x : 0, dz = e ? e.pos.z - hole.pos.z : 0;
+    arrowPivot.visible = !!e && Math.hypot(dx, dz) > hole.vis * 1.3;
+    if (!arrowPivot.visible) return;
+    arrowPivot.rotation.y = Math.atan2(-dx, -dz);
+    arrowPivot.userData.mesh.position.z = -(1.85 + Math.sin(G.t * 7) * 0.1);
+  }
+
+  // ---------- 吞噬特效（粒子） ----------
+  // 粒子形狀：在 canvas 上畫白色圖形，著色交給 shader（同一張 4×2 貼圖）
+  function drawShape(x, tile, cx, cy, r, color) {
+    x.save();
+    x.fillStyle = x.strokeStyle = color;
+    x.beginPath();
+    if (tile === 0) {
+      for (let i = 0; i < 10; i++) {
+        const a = -PI / 2 + (i * PI) / 5, rr = i % 2 ? r * 0.45 : r;
+        x.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
+      }
+      x.fill();
+    } else if (tile === 1) {
+      x.moveTo(cx, cy + r * 0.85);
+      x.bezierCurveTo(cx - r * 1.3, cy - r * 0.1, cx - r * 0.6, cy - r * 1.05, cx, cy - r * 0.4);
+      x.bezierCurveTo(cx + r * 0.6, cy - r * 1.05, cx + r * 1.3, cy - r * 0.1, cx, cy + r * 0.85);
+      x.fill();
+    } else if (tile === 2) {
+      x.globalAlpha = 0.25;
+      x.arc(cx, cy, r * 0.9, 0, PI * 2);
+      x.fill();
+      x.globalAlpha = 1;
+      x.lineWidth = r * 0.14;
+      x.stroke();
+      x.beginPath();
+      x.arc(cx - r * 0.35, cy - r * 0.35, r * 0.16, 0, PI * 2);
+      x.fill();
+    } else if (tile === 3) {
+      x.fillRect(cx - r * 0.7, cy - r * 0.7, r * 1.4, r * 1.4);
+    } else if (tile === 4) {
+      const g = x.createRadialGradient(cx, cy, 0, cx, cy, r);
+      g.addColorStop(0, color);
+      g.addColorStop(0.35, color);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      x.fillStyle = g;
+      x.globalAlpha = 1;
+      x.arc(cx, cy, r, 0, PI * 2);
+      x.fill();
+    } else if (tile === 5) {
+      x.lineWidth = r * 0.13;
+      x.lineCap = 'round';
+      for (let i = 0; i < 6; i++) {
+        const a = (i * PI) / 3, c = Math.cos(a), s = Math.sin(a);
+        x.moveTo(cx, cy);
+        x.lineTo(cx + c * r, cy + s * r);
+        const bx = cx + c * r * 0.55, by = cy + s * r * 0.55;
+        x.moveTo(bx, by);
+        x.lineTo(bx + Math.cos(a + 0.7) * r * 0.3, by + Math.sin(a + 0.7) * r * 0.3);
+        x.moveTo(bx, by);
+        x.lineTo(bx + Math.cos(a - 0.7) * r * 0.3, by + Math.sin(a - 0.7) * r * 0.3);
+      }
+      x.stroke();
+    } else if (tile === 6) {
+      x.arc(cx, cy, r * 0.85, 0, PI * 2);
+      x.fill();
+      x.beginPath();
+      x.strokeStyle = 'rgba(0,0,0,0.28)';
+      x.lineWidth = r * 0.12;
+      x.arc(cx, cy, r * 0.6, 0, PI * 2);
+      x.stroke();
+    }
+    x.restore();
+  }
+  const fxAtlas = (() => {
+    const c = document.createElement('canvas');
+    c.width = 512;
+    c.height = 256;
+    const x = c.getContext('2d');
+    for (let t = 0; t < 7; t++) drawShape(x, t, (t % 4) * 128 + 64, Math.floor(t / 4) * 128 + 64, 54, '#fff');
+    const tex = new T.CanvasTexture(c);
+    tex.generateMipmaps = false;
+    tex.minFilter = T.LinearFilter;
+    return tex;
+  })();
+  // 商店用的小圖示
+  const fxIconCache = {};
+  function fxIcon(f) {
+    if (fxIconCache[f.id]) return fxIconCache[f.id];
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const x = c.getContext('2d');
+    if (f.colors) {
+      [[22, 40, 13], [43, 24, 11], [44, 46, 8]].forEach(([cx, cy, r], i) => drawShape(x, f.tile, cx, cy, r, hex(f.colors[i % f.colors.length])));
+    }
+    return (fxIconCache[f.id] = c.toDataURL());
+  }
+
+  const FX_N = 400;
+  const fxGeo = new T.BufferGeometry();
+  const fxPos = new Float32Array(FX_N * 3), fxCol = new Float32Array(FX_N * 4), fxSize = new Float32Array(FX_N), fxTile = new Float32Array(FX_N);
+  fxGeo.setAttribute('position', new T.BufferAttribute(fxPos, 3).setUsage(T.DynamicDrawUsage));
+  fxGeo.setAttribute('col', new T.BufferAttribute(fxCol, 4).setUsage(T.DynamicDrawUsage));
+  fxGeo.setAttribute('size', new T.BufferAttribute(fxSize, 1).setUsage(T.DynamicDrawUsage));
+  fxGeo.setAttribute('tile', new T.BufferAttribute(fxTile, 1).setUsage(T.DynamicDrawUsage));
+  const fxMat = new T.ShaderMaterial({
+    uniforms: { map: { value: fxAtlas }, scale: { value: 500 } },
+    vertexShader: `attribute float size; attribute vec4 col; attribute float tile; uniform float scale;
+      varying vec4 vCol; varying float vTile;
+      void main() { vCol = col; vTile = tile; vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = size * scale / -mv.z; gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `uniform sampler2D map; varying vec4 vCol; varying float vTile;
+      void main() { vec2 uv = vec2((mod(vTile, 4.0) + gl_PointCoord.x) / 4.0, 1.0 - (floor(vTile / 4.0) + gl_PointCoord.y) / 2.0);
+        vec4 t = texture2D(map, uv); float a = t.a * vCol.a; if (a < 0.03) discard; gl_FragColor = vec4(vCol.rgb * t.rgb, a); }`,
+    transparent: true, depthWrite: false,
+  });
+  const fxPts = new T.Points(fxGeo, fxMat);
+  fxPts.frustumCulled = false;
+  fxPts.renderOrder = 9;
+  scene.add(fxPts);
+  const fxP = Array.from({ length: FX_N }, () => ({ life: 0, max: 1, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, g: 0, drag: 0, s: 0, a: 1 }));
+  let fxNext = 0, fxAlive = 0;
+  const _fc = new T.Color();
+
+  // 東西掉進洞的瞬間噴一把粒子；數量看東西大小，鏡頭越高粒子越大
+  function eatFx(e) {
+    const f = fxOf(save.fx);
+    if (!f.colors) return;
+    const k = (7 + hole.vis * 5.5) / 12.5;
+    const n = Math.min(14, 3 + Math.round(e.r * 4));
+    const burst = f.colors[Math.floor(Math.random() * f.colors.length)]; // 煙火：一發一個主色
+    const rnd = (a, b) => a + Math.random() * (b - a);
+    for (let i = 0; i < n; i++) {
+      const j = fxNext, p = fxP[j];
+      fxNext = (fxNext + 1) % FX_N;
+      const a = Math.random() * PI * 2, c = Math.cos(a), s = Math.sin(a);
+      p.x = e.pos.x + c * e.r * 0.4;
+      p.z = e.pos.z + s * e.r * 0.4;
+      p.y = 0.3 * k;
+      p.drag = 0;
+      let out, up, col = f.colors[Math.floor(Math.random() * f.colors.length)];
+      switch (f.id) {
+        case 'star': out = rnd(2, 4); up = rnd(4, 7); p.g = 14; p.max = 0.75; p.s = rnd(0.35, 0.55); break;
+        case 'heart': out = rnd(0.6, 1.4); up = rnd(2, 3.5); p.g = -1; p.max = 1.0; p.s = rnd(0.4, 0.6); break;
+        case 'bubble': out = rnd(0.5, 1.5); up = rnd(1.5, 3); p.g = -0.6; p.drag = 1; p.max = 1.2; p.s = rnd(0.25, 0.6); break;
+        case 'pixel': out = rnd(3, 5); up = rnd(5, 8); p.g = 20; p.max = 0.8; p.s = rnd(0.18, 0.3); break;
+        case 'snow': out = rnd(1, 2); up = rnd(2, 4); p.g = 1.5; p.drag = 2; p.max = 1.3; p.s = rnd(0.3, 0.5); break;
+        case 'coin': out = rnd(1, 2); up = rnd(6, 9); p.g = 18; p.max = 0.9; p.s = rnd(0.35, 0.45); break;
+        default: { // firework：在洞口上方炸成一顆球
+          const u = rnd(-1, 1), w = Math.sqrt(1 - u * u), sp = rnd(4, 6);
+          p.y = (1.4 + e.r * 0.5) * k;
+          p.vx = c * w * sp * k; p.vz = s * w * sp * k; p.vy = u * sp * k;
+          p.g = 4; p.drag = 1.8; p.max = 0.9; p.s = rnd(0.5, 0.7);
+          col = Math.random() < 0.3 ? 0xffffff : burst;
+          out = -1;
+        }
+      }
+      if (out >= 0) {
+        p.vx = c * out * k;
+        p.vz = s * out * k;
+        p.vy = up * k;
+      }
+      p.g *= k;
+      p.s *= k;
+      p.life = p.max;
+      _fc.set(col);
+      fxCol[j * 4] = _fc.r; fxCol[j * 4 + 1] = _fc.g; fxCol[j * 4 + 2] = _fc.b;
+      fxTile[j] = f.tile;
+    }
+    fxAlive = FX_N;
+  }
+
+  function updateFx(dt) {
+    if (!fxAlive) return;
+    let alive = 0;
+    for (let i = 0; i < FX_N; i++) {
+      const p = fxP[i];
+      if (p.life <= 0) {
+        if (fxSize[i]) fxSize[i] = 0;
+        continue;
+      }
+      alive++;
+      p.life -= dt;
+      p.vy -= p.g * dt;
+      if (p.drag) {
+        const d = Math.max(0, 1 - p.drag * dt);
+        p.vx *= d; p.vy *= d; p.vz *= d;
+      }
+      p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+      const f = Math.max(0, p.life / p.max);
+      fxPos[i * 3] = p.x; fxPos[i * 3 + 1] = p.y; fxPos[i * 3 + 2] = p.z;
+      fxCol[i * 4 + 3] = Math.min(1, f / 0.4);
+      fxSize[i] = p.life > 0 ? p.s * (0.6 + 0.4 * f) : 0;
+    }
+    fxAlive = alive;
+    for (const k of ['position', 'col', 'size', 'tile']) fxGeo.attributes[k].needsUpdate = true;
+  }
+  function clearFx() {
+    fxP.forEach((p) => { p.life = 0; });
+    fxSize.fill(0);
+    fxGeo.attributes.size.needsUpdate = true;
+    fxAlive = 0;
   }
 
   let grassTex = null;
@@ -417,6 +683,10 @@
     G.falling = 0;
     G.shake = 0;
     for (const k in G.boosts) G.boosts[k] = 0;
+    G.pre = {};
+    G.arrow = false;
+    arrowTarget = null;
+    clearFx();
     G.half = S / 2;
     G.moved = false;
     updateHoleMesh(0, true);
@@ -433,7 +703,10 @@
     }
     G.t += dt;
     if (G.state === 'playing') updatePlay(dt);
-    if (G.state !== 'paused') updateEnts(dt, G.state === 'playing');
+    if (G.state !== 'paused') {
+      updateEnts(dt, G.state === 'playing');
+      updateFx(dt);
+    }
     for (const im of G.ims) {
       if (im.userData.dirty) {
         im.instanceMatrix.needsUpdate = true;
@@ -441,6 +714,7 @@
       }
     }
     updateHoleMesh(dt);
+    updateArrow(dt);
     updateCamera(dt);
     renderer.render(scene, camera);
   }
@@ -690,6 +964,7 @@
       const sk = skinOf(save.skin);
       if (sk.anim === 'rainbow') rim.material.color.setHSL((G.t * 0.15) % 1, 0.85, 0.6);
       else if (sk.anim === 'fire') rim.material.color.setHSL(0.06 + Math.sin(G.t * 5) * 0.03, 1, 0.55);
+      else if (sk.anim === 'neon') rim.material.color.setHSL(0.5 + 0.33 * (0.5 + 0.5 * Math.sin(G.t * 2.5)), 1, 0.6);
       else rim.material.color.set(sk.color);
     }
     if (spot.intensity > 0) {
@@ -1041,6 +1316,7 @@
       const locked = lockedGoal(e, cur) || (G.L.walls.length > 0 && d < R + e.r && wallBetween(hx, hz, p.x, p.z));
       if (canEat && !locked && e.r <= R * 0.95 && d <= Math.max(R - e.r * 0.4, R * 0.35)) {
         startFall(e, dx, dz, d);
+        eatFx(e);
         if (e.goal && goalOpen(e)) lastGoalCheck(e);
         continue;
       }
@@ -1249,6 +1525,7 @@
     camera.aspect = w / h;
     camera.fov = w / h < 0.7 ? 46 : 40;
     camera.updateProjectionMatrix();
+    fxMat.uniforms.scale.value = (h * renderer.getPixelRatio()) / (2 * Math.tan((camera.fov * PI) / 360));
   }
   window.addEventListener('resize', resize);
 
@@ -1441,7 +1718,36 @@
       <div class="m-items">${itemCards(G.goals)}</div>
       ${G.avoid.length ? `<div class="m-sec bad">吃到會扣時間</div><div class="m-items">${itemCards(G.avoid, true)}</div>` : ''}
       <div class="m-time">⏱ 限時 ${Math.floor(G.L.time / 60)}:${String(G.L.time % 60).padStart(2, '0')}</div>
-      <button class="big-btn" data-act="begin">開始！</button>`);
+      <div class="m-sec">開局加成（只限這一局）</div>
+      <div class="pre-row">${Object.keys(PRE).map((k) => {
+        const c = PRE[k], off = !preOk(k);
+        return `<button class="pre${off ? ' off' : ''}" data-act="pre" data-pre="${k}"><i>${c.icon}</i><span>${c.name}</span>
+          <small>${off ? '本關不適用' : `<i class="coin"></i>${c.cost}`}</small></button>`;
+      }).join('')}</div>
+      <button class="big-btn" data-act="begin" id="btnBegin">開始！</button>`);
+  }
+  // 開局大一級：這關的黑洞上限比 2 級還小就不能用
+  const preOk = (k) => k !== 'size' || radiusOf(2) <= (G.L.maxR || G.half * 0.3);
+  const preCost = () => Object.keys(G.pre).reduce((t, k) => t + (G.pre[k] ? PRE[k].cost : 0), 0);
+  function applyPre() {
+    const cost = preCost();
+    if (!cost) return;
+    if (save.coins < cost) { G.pre = {}; return; }
+    setCoins(save.coins - cost, true);
+    if (G.pre.size) {
+      hole.size = 2;
+      updateSize();
+      fxT = 0.7;
+      A.levelUp();
+    }
+    if (G.pre.time) {
+      G.time += 15;
+      G.total += 15;
+      G.shownSec = -1;
+      showTimer();
+    }
+    if (G.pre.arrow) G.arrow = true;
+    G.pre = {};
   }
 
   function pauseModal() {
@@ -1572,20 +1878,109 @@
     })();
   }
 
-  // 黑洞造型商店
-  function skinModal() {
-    showModal(`
-      <h2>黑洞造型</h2>
-      <div class="m-note">用金幣買外框顏色，買過就能隨時換</div>
+  // 商店：外框／吞噬特效／扭蛋 三個分頁
+  const SHOP_TABS = { skin: '外框', fx: '吞噬特效', gacha: '扭蛋' };
+  let shopTab = 'skin', gachaBusy = false;
+  function shopMsg(text) {
+    const el = $('shopMsg');
+    if (!el) return;
+    A.bad();
+    el.textContent = text;
+    el.classList.remove('nope');
+    void el.offsetWidth;
+    el.classList.add('nope');
+  }
+  function priceTag(own, on, item) {
+    return on ? '使用中' : own ? '使用' : item.gacha ? '扭蛋限定' : `<i class="coin"></i>${item.price}`;
+  }
+  function shopModal(tab) {
+    shopTab = tab || shopTab;
+    let body = '';
+    if (shopTab === 'skin') {
+      body = `<div class="m-note">換黑洞的外框顏色，買過就能隨時換</div>
       <div class="skin-grid">${SKINS.map((k) => {
         const own = (save.skins || []).includes(k.id), on = save.skin === k.id;
         const sw = k.anim === 'rainbow' ? 'conic-gradient(#f44,#fc3,#4c4,#3cf,#a4f,#f44)'
-          : k.anim === 'fire' ? 'radial-gradient(#ffd54f,#ff7043 60%,#d32f2f)' : '#' + k.color.toString(16).padStart(6, '0');
-        return `<button class="skin${on ? ' on' : ''}" data-act="skin" data-skin="${k.id}">
-          <i class="sw" style="background:${sw}"></i><span>${k.name}</span>
-          <small>${on ? '使用中' : own ? '使用' : `<i class="coin"></i>${k.price}`}</small></button>`;
-      }).join('')}</div>
+          : k.anim === 'fire' ? 'radial-gradient(#ffd54f,#ff7043 60%,#d32f2f)'
+          : k.anim === 'neon' ? 'linear-gradient(135deg,#22d3ee,#e879f9)' : hex(k.color);
+        return `<button class="skin${on ? ' on' : ''}${k.gacha && !own ? ' rare' : ''}" data-act="skin" data-skin="${k.id}">
+          <i class="sw" style="background:${sw}"></i><span>${k.name}</span><small>${priceTag(own, on, k)}</small></button>`;
+      }).join('')}</div>`;
+    } else if (shopTab === 'fx') {
+      body = `<div class="m-note">東西掉進黑洞時噴出來的效果</div>
+      <div class="skin-grid">${EAT_FX.map((f) => {
+        const own = (save.fxs || ['none']).includes(f.id), on = (save.fx || 'none') === f.id;
+        return `<button class="skin${on ? ' on' : ''}${f.gacha && !own ? ' rare' : ''}" data-act="fx" data-fx="${f.id}">
+          <i class="fx-ic"><img src="${fxIcon(f)}" alt=""></i><span>${f.name}</span><small>${priceTag(own, on, f)}</small></button>`;
+      }).join('')}</div>`;
+    } else {
+      body = `<div class="gacha">
+        <div class="capsule" id="capsule"><i></i></div>
+        <div class="gacha-out" id="gachaOut">抽金幣、道具，還有扭蛋限定的外框和特效！</div>
+      </div>
+      <button class="big-btn purple" data-act="gacha" ${gachaBusy ? 'disabled' : ''}>轉一次 <small><i class="coin"></i>${GACHA_COST}</small></button>
+      <div class="m-note">機率：金幣 42%・道具 40%・限定外框 12%・限定特效 6%</div>
+      <div class="m-note">限定外框：${SKINS.filter((k) => k.gacha).map((k) => k.name).join('、')}｜限定特效：${EAT_FX.filter((k) => k.gacha).map((k) => k.name).join('、')}</div>`;
+    }
+    showModal(`
+      <h2>商店</h2>
+      <div class="coin-pill shop-coins"><i class="coin"></i><span>${save.coins}</span></div>
+      <div class="seg shop-tabs">${Object.keys(SHOP_TABS).map((k) => `<button class="${k === shopTab ? 'on' : ''}" data-act="tab" data-tab="${k}">${SHOP_TABS[k]}</button>`).join('')}</div>
+      ${body}
+      <div class="shop-msg" id="shopMsg"></div>
       <div class="m-btns"><button class="big-btn" data-act="close">完成</button></div>`);
+  }
+
+  function rollGacha() {
+    let r = Math.random() * GACHA.reduce((t, g) => t + g.w, 0);
+    const g = GACHA.find((x) => (r -= x.w) < 0) || GACHA[0];
+    if (g.type === 'coins') {
+      save.coins += g.n;
+      return { big: g.n >= 500, html: `<b>${g.n}</b> <i class="coin"></i> 金幣${g.n >= 500 ? '　大獎！' : ''}` };
+    }
+    if (g.type === 'boost') {
+      const ks = Object.keys(BOOST), k = ks[Math.floor(Math.random() * ks.length)];
+      save.bag[k] = (save.bag[k] || 0) + g.n;
+      return { big: false, html: `${BOOST[k].icon} ${BOOST[k].name} ×${g.n}` };
+    }
+    const skin = g.type === 'skin', what = skin ? '外框' : '特效';
+    const list = skin ? SKINS : EAT_FX;
+    const owned = skin ? (save.skins = save.skins || ['classic']) : (save.fxs = save.fxs || ['none']);
+    const left = list.filter((k) => k.gacha && !owned.includes(k.id));
+    if (!left.length) {
+      save.coins += 300;
+      return { big: false, html: `限定${what}已經抽齊，換成 <b>300</b> <i class="coin"></i>` };
+    }
+    const k = left[Math.floor(Math.random() * left.length)];
+    owned.push(k.id);
+    return { big: true, html: `限定${what}「${k.name}」！<small>到「${skin ? '外框' : '吞噬特效'}」分頁換上</small>` };
+  }
+
+  function spinGacha(btn) {
+    if (gachaBusy) return;
+    if (save.coins < GACHA_COST) return shopMsg('金幣不夠');
+    gachaBusy = true;
+    btn.disabled = true;
+    save.coins -= GACHA_COST;
+    const shown = save.coins;
+    const prize = rollGacha(); // 先決定結果並存檔，動畫中途關掉也不會吃掉獎品；畫面上的金幣等開獎再更新
+    persist();
+    $('modalCard').querySelector('.shop-coins span').textContent = shown;
+    $('menuCoins').textContent = shown;
+    A.boost();
+    const cap = $('capsule'), out = $('gachaOut');
+    cap.className = 'capsule spin';
+    out.textContent = '轉轉轉……';
+    setTimeout(() => {
+      gachaBusy = false;
+      setCoins(save.coins, true);
+      if (!document.body.contains(cap)) return;
+      cap.className = 'capsule open' + (prize.big ? ' big' : '');
+      out.innerHTML = prize.html;
+      $('modalCard').querySelector('.shop-coins span').textContent = save.coins;
+      btn.disabled = false;
+      if (prize.big) A.win(); else A.coin();
+    }, 900);
   }
 
   function lose() {
@@ -1613,6 +2008,7 @@
 
   const actions = {
     begin() {
+      applyPre();
       closeModal();
       G.state = 'playing';
       banner('開始！');
@@ -1625,19 +2021,51 @@
     },
     retry() { startLevel(G.daily ? 'daily' : G.n, true); },
     next() { startLevel(G.n + 1, false); },
+    pre(btn) {
+      const k = btn.dataset.pre;
+      if (!preOk(k)) return;
+      if (!G.pre[k] && save.coins < preCost() + PRE[k].cost) {
+        btn.classList.remove('nope');
+        void btn.offsetWidth;
+        btn.classList.add('nope');
+        A.bad();
+        return;
+      }
+      G.pre[k] = !G.pre[k];
+      btn.classList.toggle('on', G.pre[k]);
+      const cost = preCost();
+      $('btnBegin').innerHTML = cost ? `開始！ <small>－${cost}<i class="coin"></i></small>` : '開始！';
+    },
+    tab(btn) { shopModal(btn.dataset.tab); },
+    fx(btn) {
+      const f = fxOf(btn.dataset.fx);
+      save.fxs = save.fxs || ['none'];
+      if (!save.fxs.includes(f.id)) {
+        if (f.gacha) return shopMsg('這款只能從扭蛋抽到');
+        if (save.coins < f.price) return shopMsg('金幣不夠');
+        setCoins(save.coins - f.price, true);
+        save.fxs.push(f.id);
+        A.coin();
+      }
+      save.fx = f.id;
+      persist();
+      shopModal('fx');
+    },
+    gacha(btn) { spinGacha(btn); },
     close() { closeModal(); },
     skin(btn) {
       const k = skinOf(btn.dataset.skin);
       save.skins = save.skins || ['classic'];
       if (!save.skins.includes(k.id)) {
-        if (save.coins < k.price) { popup('金幣不夠', 'bad'); return; }
+        if (k.gacha) return shopMsg('這款只能從扭蛋抽到');
+        if (save.coins < k.price) return shopMsg('金幣不夠');
         setCoins(save.coins - k.price, true);
         save.skins.push(k.id);
         A.coin();
       }
       save.skin = k.id;
       persist();
-      skinModal();
+      shopModal('skin');
     },
     menu() { showMenu(); },
     continue() {
@@ -1748,7 +2176,7 @@
 
   $('btnPlay').addEventListener('click', () => { A.unlock(); A.click(); startLevel(save.level, false); });
   $('btnDaily').addEventListener('click', () => { A.unlock(); A.click(); startLevel('daily', false); });
-  $('btnSkins').addEventListener('click', () => { A.unlock(); A.click(); skinModal(); });
+  $('btnSkins').addEventListener('click', () => { A.unlock(); A.click(); shopModal('skin'); });
   $('btnDex').addEventListener('click', () => { A.unlock(); A.click(); dexModal(); });
   $('levelGrid').addEventListener('click', (ev) => {
     const b = ev.target.closest('[data-level]');
