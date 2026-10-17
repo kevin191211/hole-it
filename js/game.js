@@ -1636,8 +1636,9 @@
     save.coins = v;
     persist();
     $('menuCoins').textContent = v;
+    $('hudCoins').textContent = v;
     if (bump) {
-      document.querySelectorAll('.coin-pill').forEach((p) => {
+      document.querySelectorAll('.coin-pill, .hud-coins').forEach((p) => {
         p.classList.remove('bump');
         void p.offsetWidth;
         p.classList.add('bump');
@@ -2039,6 +2040,8 @@
       <div class="m-note">時間到了</div>
       <div class="m-note">本局 ${G.score} 分</div>
       <div class="progress-list">${G.goals.map((g) => `<div><img src="${g.img}" alt="">${g.got}/${g.need}</div>`).join('')}</div>
+      <div class="coin-pill shop-coins lose-coins"><i class="coin"></i><span>${save.coins}</span></div>
+      ${can ? '' : `<div class="m-note">金幣不足 ${CONTINUE_COST}，無法繼續</div>`}
       <div class="m-btns">
         <button class="big-btn" data-act="retry">再試一次</button>
         <div class="m-row">
@@ -2212,6 +2215,7 @@
     G.state = 'menu';
     $('menuLevel').textContent = save.level;
     $('menuCoins').textContent = save.coins;
+    $('hudCoins').textContent = save.coins;
     $('btnDaily').textContent = save.daily && save.daily[todayKey()] ? '📅 今日已完成 ✓' : '📅 每日挑戰';
     renderLevelGrid();
     updateSoundBtn();
