@@ -438,6 +438,7 @@ button {
   text-align: center;
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.3);
   max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
   overflow-y: auto;
 }
 .card.pop { animation: popIn 0.32s cubic-bezier(0.2, 1.4, 0.4, 1); }
@@ -1139,3 +1140,39 @@ button {
 .ev-rewards b { min-width: 70px; color: #e8590c; }
 .skin.eventlock { background: linear-gradient(180deg, #fff1e0, #fff); border-style: dashed; border-color: #ff8f00; }
 .skin.eventlock small { color: #e8590c; font-weight: 700; font-size: 11px; }
+/* 商店：5 個分頁 */
+.shop-tabs { gap: 4px; padding: 4px; }
+.shop-tabs button { font-size: 14px; padding: 9px 0; }
+/* 商店：道具分頁 */
+.boost-shop { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 14px; text-align: left; }
+.bshop { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 2px solid #e5e7eb; border-radius: 14px; background: #fff; }
+.bs-ic { font-style: normal; font-size: 28px; width: 36px; text-align: center; flex: none; }
+.bs-info { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+.bs-info b { font-size: 15px; }
+.bs-info span { font-size: 12px; color: var(--ink-soft); }
+.bs-info small { font-size: 11px; color: var(--accent); font-weight: 700; margin-top: 2px; }
+.bs-buy { display: flex; flex-direction: column; gap: 5px; flex: none; }
+.bs-buy button { display: flex; align-items: center; justify-content: center; gap: 3px; min-width: 84px; padding: 5px 8px; border-radius: 10px; background: #efeaff; font: inherit; font-size: 13px; font-weight: 700; color: var(--ink); box-shadow: 0 2px 0 #cfc5f5; }
+.bs-buy button.bulk { background: #fff4cc; box-shadow: 0 2px 0 #f0d58a; }
+.bs-buy .coin { font-size: 14px; }
+
+/* ========== 關卡介紹：手機高度不夠時 ========== */
+/* 100vh 在手機瀏覽器會算進網址列，改用 100dvh 才不會超出畫面；底部加返回鈕 */
+.modal { padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom)); }
+.card { max-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+.m-dock.m-row .m-back { flex: 0 0 34%; }
+.m-dock.m-row #btnBegin { flex: 1; }
+@media (max-height: 720px) {
+  .card { padding: 16px 16px 16px; border-radius: 24px; }
+  .card h2 { font-size: 24px; margin-bottom: 8px; }
+  .m-time { margin: -2px 0 6px; }
+  .m-sec { margin: 10px 0 6px; }
+  .m-item { width: 70px; padding: 6px 3px 5px; }
+  .m-item img, .m-item .no-sign { width: 40px; height: 40px; }
+  .m-item .no-sign { margin-left: -20px; }
+  .m-new { padding: 8px 10px; margin-top: 8px; }
+  .pre { padding: 6px 2px 5px; }
+  .pre > i { font-size: 22px; }
+  .m-dock { bottom: -16px; margin: 6px -16px -16px; padding: 10px 16px 16px; }
+  .m-dock .big-btn { padding-top: 12px; padding-bottom: 12px; }
+}
