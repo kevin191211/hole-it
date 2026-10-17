@@ -10,10 +10,10 @@
   const GRAVITY = 30;
   // 道具（照官方：變大藥水、閃電、放大鏡、冰凍時鐘；到指定關卡解鎖並送 1 個，用完可用金幣買）
   const BOOST = {
-    grow: { name: '變大藥水', icon: '🧪', unlock: 3, cost: 60, dur: 10 },
-    magnet: { name: '閃電吸取', icon: '⚡', unlock: 6, cost: 80, dur: 8 },
-    zoom: { name: '放大鏡', icon: '🔍', unlock: 9, cost: 50, dur: 12 },
-    freeze: { name: '冰凍時間', icon: '❄️', unlock: 12, cost: 70, dur: 10 },
+    grow: { name: '變大藥水', icon: '🧪', unlock: 3, cost: 60, dur: 10, desc: '黑洞暫時變大，吞得下更大的東西' },
+    magnet: { name: '閃電吸取', icon: '⚡', unlock: 6, cost: 80, dur: 8, desc: '附近吞得下的任務物會自己被吸進洞' },
+    zoom: { name: '放大鏡', icon: '🔍', unlock: 9, cost: 50, dur: 12, desc: '鏡頭拉遠，看得到更大的範圍' },
+    freeze: { name: '冰凍時間', icon: '❄️', unlock: 12, cost: 70, dur: 10, desc: '倒數計時暫停' },
   };
   const SIZE_STEP = 0.3; // 每升一級，黑洞半徑增加起始半徑的 30%
   const CONTINUE_COST = 50;
@@ -1661,8 +1661,10 @@
 
   // ---------- 道具：到指定關卡解鎖並送 1 個；數量用完後點擊會用金幣購買 ----------
   function grantBoosters() {
+    G.newBoost = [];
     for (const k in BOOST) {
       if (G.n >= BOOST[k].unlock && !save.granted[k]) {
+        G.newBoost.push(k);
         save.granted[k] = 1;
         save.bag[k] = (save.bag[k] || 0) + 1;
       }
@@ -1700,8 +1702,29 @@
     });
   }
 
+  // 道具說明：長按道具顯示，放開後幾秒自動收起
+  const boostLine = (k) => `${BOOST[k].icon} ${BOOST[k].name}：${BOOST[k].desc}（${BOOST[k].dur} 秒）`;
+  let tipTimer = 0, pressTimer = 0, pressed = false;
+  function boostTip(k) {
+    const tip = $('boostTip');
+    tip.textContent = boostLine(k) + (G.n < BOOST[k].unlock ? `・第 ${BOOST[k].unlock} 關解鎖` : '');
+    tip.classList.remove('hidden');
+    clearTimeout(tipTimer);
+    tipTimer = setTimeout(() => tip.classList.add('hidden'), 3000);
+  }
+  $('boosters').addEventListener('pointerdown', (ev) => {
+    const b = ev.target.closest('.booster');
+    if (!b) return;
+    pressed = false;
+    clearTimeout(pressTimer);
+    pressTimer = setTimeout(() => { pressed = true; boostTip(b.dataset.boost); vibrate(20); }, 450);
+  });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach((t) => $('boosters').addEventListener(t, () => clearTimeout(pressTimer)));
+  $('boosters').addEventListener('contextmenu', (ev) => ev.preventDefault());
+
   $('boosters').addEventListener('click', (ev) => {
     const b = ev.target.closest('.booster');
+    if (pressed) { pressed = false; return; } // 長按看說明，不算使用
     if (!b || G.state !== 'playing') return;
     const k = b.dataset.boost, cfg = BOOST[k];
     const nope = (msg) => {
@@ -1711,7 +1734,7 @@
       A.bad();
       popup(msg, 'info');
     };
-    if (G.n < cfg.unlock) return nope(`第 ${cfg.unlock} 關解鎖`);
+    if (G.n < cfg.unlock) { boostTip(k); return nope(`第 ${cfg.unlock} 關解鎖`); }
     if ((G.boosts[k] || 0) > 0) return;
     if ((save.bag[k] || 0) > 0) save.bag[k]--;
     else if (save.coins >= cfg.cost) setCoins(save.coins - cfg.cost, true);
@@ -1752,6 +1775,7 @@
       <div class="m-sec">任務：${G.L.ordered ? '依序吃掉' : '吃掉'}</div>
       <div class="m-items">${itemCards(G.goals)}</div>
       ${G.avoid.length ? `<div class="m-sec bad">吃到會扣時間</div><div class="m-items">${itemCards(G.avoid, true)}</div>` : ''}
+      ${(G.newBoost || []).map((k) => `<div class="m-tip">新道具解鎖：${boostLine(k)}<br>送你 1 個，遊戲中點右下角使用</div>`).join('')}
       <div class="m-time">⏱ 限時 ${Math.floor(G.L.time / 60)}:${String(G.L.time % 60).padStart(2, '0')}</div>
       <div class="m-sec">開局加成（只限這一局）</div>
       <div class="pre-row">${Object.keys(PRE).map((k) => {
@@ -1796,6 +1820,8 @@
           <button class="big-btn ghost" data-act="menu">主選單</button>
         </div>
         <button class="big-btn ghost" data-act="sound">${save.muted ? '🔇 音效：關' : '🔊 音效：開'}</button>
+        <div class="m-sec">道具說明（長按道具也看得到）</div>
+        <div class="boost-help">${Object.keys(BOOST).map((k) => `<div${G.n < BOOST[k].unlock ? ' class="off"' : ''}>${boostLine(k)}${G.n < BOOST[k].unlock ? `・第 ${BOOST[k].unlock} 關解鎖` : ''}</div>`).join('')}</div>
         <div class="m-sec">操控方式</div>
         <div class="seg">${Object.keys(CTRL_ZH).map((k) => `<button class="${save.ctrl === k ? 'on' : ''}" data-act="ctrl" data-ctrl="${k}">${CTRL_ZH[k]}</button>`).join('')}</div>
         <div class="m-sec">移動速度 <b id="speedVal">×${speedMul().toFixed(2)}</b></div>

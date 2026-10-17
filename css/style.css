@@ -298,6 +298,23 @@ button {
 }
 .booster.active > * { position: relative; }
 .booster.nope { animation: shake 0.35s; }
+.booster { -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
+.boost-tip {
+  position: absolute;
+  right: 0;
+  bottom: 74px;
+  max-width: min(320px, calc(100vw - 24px));
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(20, 28, 48, 0.85);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  pointer-events: none;
+}
+.boost-help { display: flex; flex-direction: column; gap: 4px; text-align: left; font-size: 13px; color: var(--ink); }
+.boost-help .off { color: var(--ink-soft); opacity: 0.7; }
 
 .drag-hint {
   position: absolute;
