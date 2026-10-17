@@ -723,7 +723,7 @@
 
   const qA = new T.Quaternion(), qB = new T.Quaternion(), _m = new T.Matrix4(), _pv = new T.Vector3(), _sv = new T.Vector3();
   function writeMatrix(e) {
-    qB.setFromAxisAngle(UP, e.yaw);
+    qB.setFromAxisAngle(UP, e.yaw + (e.wob || 0));
     if (e.tilt) {
       qA.setFromAxisAngle(e.axis, e.tilt);
       qB.premultiply(qA);
@@ -1573,6 +1573,8 @@
     e.vx = d > 0.001 ? (dx / d) * 1.2 : 0;
     e.vz = d > 0.001 ? (dz / d) * 1.2 : 0;
     e.bob = 0;
+    e.wob = 0;
+    e.shiver = false;
     e.spin = 2.5 + Math.random() * 3;
     if (d > 0.001) e.axis.set(dz / d, 0, -dx / d);
     else e.axis.set(Math.random() - 0.5, 0, Math.random() - 0.5).normalize();
@@ -1716,7 +1718,7 @@
       if (!grounded) continue;
       if (e.walk) walk(e, dt);
       let dx = hx - p.x, dz = hz - p.z;
-      if (!magnet && !e.tilt && !e.dirty && dx * dx + dz * dz > (R + e.r) * (R + e.r)) continue;
+      if (!magnet && !e.tilt && !e.dirty && !e.shiver && dx * dx + dz * dz > (R + e.r + 1.2) * (R + e.r + 1.2)) continue;
       let d = Math.sqrt(dx * dx + dz * dz);
       if (magnet && e.goal && !e.above.length && d < R * 3 + 7 && d > 0.05 && e.r <= R * 0.95 && goalOpen(e)) {
         const s = Math.min(d, (5 + R * 2) * dt);
@@ -1744,6 +1746,15 @@
       if (tt || e.tilt) {
         e.tilt += (tt - e.tilt) * Math.min(1, dt * 12);
         if (!tt && Math.abs(e.tilt) < 0.002) e.tilt = 0;
+        e.dirty = true;
+      }
+      // 黑洞快靠過來時，吞得下的小東西會害怕得左右發抖、小跳（會走的動物用逃跑代替）
+      const scared = canEat && !locked && !e.walk && e.kind !== 'treasure' && !e.above.length && e.r <= R * 0.95 && d < R + e.r + 1.2;
+      if (scared || e.shiver) {
+        const a = scared ? Math.min(1, (R + e.r + 1.2 - d) / 1.2) : 0;
+        e.shiver = scared;
+        e.wob = a ? Math.sin(G.t * 40 + i * 1.7) * 0.09 * a : 0;
+        e.bob = a ? Math.abs(Math.sin(G.t * 17 + i)) * 0.035 * a * e.base : 0;
         e.dirty = true;
       }
       if (e.dirty) {

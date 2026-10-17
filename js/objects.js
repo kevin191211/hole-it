@@ -1566,6 +1566,14 @@
     cake: { y: 0.3 }, bomb: { y: 0.42, dark: true }, jelly: { y: 0.38 }, macaron: { y: 0.66, s: 0.9 }, cupcake: { y: 0.2, s: 0.85 },
     icecream: { y: 0.72, s: 0.8 }, hydrant: { y: 0.6, s: 1.15 }, trash: { y: 0.5 }, barrel: { y: 0.5 },
     cube: { y: 0.45 }, gift: { y: 0.33, x: 0.22, s: 0.8 }, nigiri: { y: 0.4, s: 0.8 },
+    // 第二批：交通工具、家電、玩具、植物、球類
+    car: { y: 0.32, yaw: 0.2 }, jeep: { y: 0.32, s: 0.8, yaw: 0.2 }, toytrain: { y: 0.42, s: 0.7 }, minitrain: { y: 0.42, s: 0.75 },
+    rocket: { y: 0.42, s: 0.9 }, tv: { y: 0.42, s: 0.9 }, fridge: { y: 0.72, s: 0.8 },
+    arcade: { y: 0.66, s: 0.75 }, backpack: { y: 0.42 }, blender: { y: 0.18, s: 0.8 }, cone: { y: 0.3, s: 0.8 },
+    tree: { y: 0.62, s: 0.9 }, bush: { y: 0.5 }, pine: { y: 0.36, s: 0.8 }, broccoli: { y: 0.62 }, star: { y: 0.45, yaw: 0 },
+    basketball: { y: 0.5 }, tennis: { y: 0.5 }, ball: { y: 0.42 }, pot: { y: 0.42 }, crate: { y: 0.45, s: 0.85 },
+    hay: { y: 0.45 }, brick: { y: 0.3 }, candy: { y: 0.5, s: 0.8, yaw: 0 }, maki: { y: 0.42, dark: true }, tomb: { y: 0.42, s: 0.85 },
+    lemonwedge: { y: 0.35 }, walkie: { y: 0.45, s: 0.8 }, phone: { y: 0.3, s: 0.8 },
   };
   const _ray = new T.Raycaster(), _ro = new T.Vector3(), _rd = new T.Vector3(0, 0, -1), _fq = new T.Quaternion(), _rq = new T.Quaternion();
   function cuteFace(geo, cfg) {
