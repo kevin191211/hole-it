@@ -481,6 +481,57 @@
         return parts;
       },
     },
+    // ---- 黃金獵犬的好朋友：骨頭、狗碗、飛盤、狗屋 ----
+    bone: {
+      name: '骨頭', r: 0.22,
+      build: () => {
+        const C = '#fff3dc', knob = sph(0.055, 10, 8);
+        const parts = [P(cyl(0.04, 0.04, 0.3, 10), C, [0, 0.06, 0], [0, 0, PI / 2])];
+        [[-0.15, 0.035], [-0.15, -0.035], [0.15, 0.035], [0.15, -0.035]].forEach(([x, z], i) => parts.push(P(i ? knob.clone() : knob, C, [x, 0.06, z])));
+        return parts;
+      },
+    },
+    dogbowl: {
+      name: '狗碗', r: 0.3,
+      build: () => {
+        const parts = [
+          P(cyl(0.27, 0.22, 0.14, 18), '#ef5350', [0, 0.07, 0]),
+          P(cyl(0.2, 0.2, 0.02, 16), '#6d4c41', [0, 0.135, 0]),
+          P(box(0.12, 0.05, 0.02), '#fff3dc', [0, 0.075, 0.25], [-0.25, 0, 0]),
+        ];
+        [[0, 0], [0.09, 0.05], [-0.08, 0.07], [0.05, -0.1], [-0.1, -0.05], [0.12, -0.04], [-0.02, 0.12]].forEach(([x, z]) =>
+          parts.push(P(sph(0.04, 6, 4), '#a1662f', [x, 0.15, z], null, [1, 0.7, 1])));
+        return parts;
+      },
+    },
+    frisbee: {
+      name: '飛盤', r: 0.24,
+      colors: { blue: '#29b6f6', pink: '#f06292', yellow: '#ffca28' },
+      noColorLabel: true,
+      build: (c) => [
+        P(cyl(0.23, 0.2, 0.05, 20), c, [0, 0.03, 0]),
+        P(torus(0.2, 0.025, 6, 22), c, [0, 0.05, 0], [PI / 2, 0, 0]),
+        P(cyl(0.12, 0.12, 0.012, 16), '#ffffff', [0, 0.058, 0]),
+      ],
+    },
+    doghouse: {
+      name: '狗屋', r: 0.75,
+      build: () => {
+        const W = '#e8b06a', R = '#e53935';
+        return [
+          P(box(1.0, 0.75, 1.1), W, [0, 0.375, 0]),
+          P(box(0.72, 0.08, 1.24), R, [-0.27, 0.93, 0], [0, 0, 0.72]),
+          P(box(0.72, 0.08, 1.24), R, [0.27, 0.93, 0], [0, 0, -0.72]),
+          P(box(0.72, 0.72, 0.06), W, [0, 0.75, 0.52], [0, 0, PI / 4], [1, 1, 1]),
+          P(box(0.72, 0.72, 0.06), W, [0, 0.75, -0.52], [0, 0, PI / 4], [1, 1, 1]),
+          P(cyl(0.22, 0.22, 0.05, 18), '#4e342e', [0, 0.3, 0.55], [PI / 2, 0, 0]),
+          P(box(0.44, 0.3, 0.05), '#4e342e', [0, 0.15, 0.55]),
+          P(box(0.3, 0.1, 0.03), '#fff8e1', [0, 0.62, 0.57]),
+          P(sph(0.03, 6, 4), '#e53935', [-0.09, 0.62, 0.59]),
+          P(sph(0.03, 6, 4), '#e53935', [0.09, 0.62, 0.59]),
+        ];
+      },
+    },
     penguin: {
       name: '企鵝', r: 0.26, walk: 0.7, hop: 1.6,
       build: () => {
@@ -1708,5 +1759,36 @@
     return thumbCache[key];
   }
 
-  Object.assign(H, { KINDS, COLOR_ZH, getGeo, defaultColor, labelOf, objMat, thumb });
+  // 大張的角色圖（主選單、過關畫面的黃金獵犬）：可指定大小與拍攝方向
+  let pR = null, pScene = null;
+  const portraitCache = {};
+  function portrait(kind, size, dir) {
+    const key = kind + '|' + size + '|' + dir.join(',');
+    if (portraitCache[key]) return portraitCache[key];
+    try {
+      if (!pR) {
+        pR = new T.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+        pR.setPixelRatio(1);
+        pScene = new T.Scene();
+        pScene.add(new T.HemisphereLight(0xffffff, 0x8a7f70, 0.65));
+        const dl = new T.DirectionalLight(0xffffff, 0.6);
+        dl.position.set(2, 6, 5);
+        pScene.add(dl);
+      }
+      pR.setSize(size, size);
+      const geo = getGeo(kind, null), mesh = new T.Mesh(geo, objMat);
+      pScene.add(mesh);
+      const bs = geo.boundingSphere, cam = new T.PerspectiveCamera(30, 1, 0.05, 200);
+      cam.position.copy(bs.center).addScaledVector(new T.Vector3(dir[0], dir[1], dir[2]).normalize(), (bs.radius / Math.sin((15 * PI) / 180)) * 0.98);
+      cam.lookAt(bs.center);
+      pR.render(pScene, cam);
+      portraitCache[key] = pR.domElement.toDataURL('image/png');
+      pScene.remove(mesh);
+    } catch (err) {
+      portraitCache[key] = '';
+    }
+    return portraitCache[key];
+  }
+
+  Object.assign(H, { KINDS, COLOR_ZH, getGeo, defaultColor, labelOf, objMat, thumb, portrait });
 })();

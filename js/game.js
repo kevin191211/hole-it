@@ -2524,6 +2524,7 @@
 
   function introModal() {
     showModal(`
+      ${dogImg('peek')}
       <div class="m-kicker">${lvLabel()}</div>
       <h2>${G.L.name}</h2>
       <div class="m-time">⏱ 限時 <b>${Math.floor(G.L.time / 60)}:${String(G.L.time % 60).padStart(2, '0')}</b></div>
@@ -2922,7 +2923,7 @@
     const left = best ? best.need - best.got : 0;
     const hint = best ? (best.kind === 'star' ? `還差 ${left} 點！` : `只差 ${left} 個！`) : '';
     showModal(`
-      <div class="lose-ic">⏰</div>
+      ${dogImg('sad') || '<div class="lose-ic">⏰</div>'}
       <div class="m-kicker">${lvLabel()}</div>
       <h2>挑戰失敗！</h2>
       <div class="m-note">時間到了・本局 <b>${G.score}</b> 分</div>
@@ -3144,8 +3145,13 @@
     $('btnMusic').classList.toggle('off', save.music === 'off');
   }
 
+  // 黃金獵犬吉祥物：用 3D 模型拍成大圖（第一次用到才產生，之後快取）
+  const DOG_VIEW = { menu: [0.9, 0.55, 1.6], happy: [0.5, 0.7, 1.6], sad: [-0.3, 1.5, 1.4], peek: [0.2, 0.35, 1.6] };
+  const dogImg = (pose, cls) => { const src = H.portrait('puppy', 256, DOG_VIEW[pose]); return src ? `<img class="dog-pic ${cls || pose}" src="${src}" alt="">` : ''; };
+
   function showMenu() {
     closeModal();
+    if (!$('menuDog').src) $('menuDog').src = H.portrait('puppy', 256, DOG_VIEW.menu);
     A.musicMood('');
     $('hud').classList.add('hidden');
     $('fx').innerHTML = '';
@@ -3547,7 +3553,7 @@
     if (record && S.plays > 1) { A.win(); confetti(70); } else A.lose();
     vibrate(record ? [30, 50, 30] : 200);
     showModal(`
-      <div class="lose-ic">♾️</div>
+      ${dogImg('happy')}
       <div class="m-kicker">無盡模式</div>
       <h2>時間到！</h2>
       <div class="final-score">${score}<small>分</small></div>
@@ -3890,6 +3896,7 @@
     setTimeout(() => {
       if (G.state !== 'won') return;
       showModal(`
+        ${dogImg('happy')}
         <div class="m-kicker">${lvLabel()}</div>
         <h2>${last ? '南瓜頭目被吞掉了！' : '過關！'}</h2>
         <div class="stars">${[1, 2, 3].map((q) => STAR.replace('<svg', `<svg class="${q <= stars ? 'on' : ''}"`)).join('')}</div>

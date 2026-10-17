@@ -213,7 +213,44 @@
     ctx.closePath();
     ctx.fill();
   }
+  // 黃金獵犬的腳印：一個大肉墊＋四個小趾頭
+  function pawAt(ctx, x, y, r, color, rot) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(0, r * 0.35, r * 0.55, r * 0.45, 0, 0, Math.PI * 2);
+    ctx.fill();
+    [[-0.62, -0.25], [-0.22, -0.62], [0.22, -0.62], [0.62, -0.25]].forEach(([a, b]) => {
+      ctx.beginPath();
+      ctx.ellipse(a * r, b * r, r * 0.21, r * 0.26, a * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.restore();
+  }
+  // 一串走過去的腳印（左右交錯）
+  function pawTrail(ctx, S, u, px, R, color) {
+    const trails = Math.max(2, Math.round(S * S * 0.004));
+    for (let t = 0; t < trails; t++) {
+      let x = R() * px, y = R() * px, a = R() * Math.PI * 2;
+      const steps = 6 + Math.floor(R() * 6), r = 0.24 * u;
+      for (let k = 0; k < steps; k++) {
+        a += (R() - 0.5) * 0.5;
+        const side = k % 2 ? 1 : -1;
+        pawAt(ctx, x + Math.cos(a) * side * r * 0.9, y - Math.sin(a) * side * r * 0.9, r, color, Math.PI - a);
+        x += Math.sin(a) * r * 2.6;
+        y += Math.cos(a) * r * 2.6;
+      }
+    }
+  }
   function cuteDeco(ctx, floor, S, u, px, R) {
+    if (floor === 'grass' || floor === 'pink' || floor === 'sky') {
+      ctx.save();
+      ctx.globalAlpha = floor === 'grass' ? 0.3 : 0.4;
+      pawTrail(ctx, S, u, px, R, floor === 'grass' ? '#3e6b1e' : '#ffffff');
+      ctx.restore();
+    }
     const n = Math.round(S * S * 0.11);
     const pick = (a) => a[Math.floor(R() * a.length)];
     ctx.save();
@@ -894,14 +931,14 @@
   // 每個主題：地板、物品池（[種類, 顏色?]）。分層時從池子裡挑，不同層不會用同一種物品（任務才不會混在一起算）
   const GEN = [
     { name: '城市街道', floor: 'city', pool: [['cone'], ['hydrant'], ['trash'], ['flower', 'yellow'], ['can', 'red'], ['papercup', 'green'], ['lamp'], ['bush'], ['bench'], ['tree'], ['pine'], ['car', 'red'], ['car', 'blue'], ['building', 'a']] },
-    { name: '公園野餐', floor: 'grass', pool: [['flower', 'pink'], ['duck'], ['bird'], ['bunny'], ['soccer'], ['puppy'], ['fox'], ['juicebox'], ['ball', 'blue'], ['apple', 'red'], ['bush'], ['bench'], ['tree'], ['pine'], ['lamp'], ['trash']], run: [['bunny', 'puppy', 'fox'], ['panda', 'sheep']] },
-    { name: '開心農場', floor: 'grass', pool: [['chicken'], ['bunny'], ['turnip'], ['onion'], ['egg'], ['puppy'], ['broccoli'], ['barrel'], ['crate'], ['hay'], ['pumpkin'], ['sheep'], ['pig'], ['cow'], ['tree']], run: [['chicken', 'bunny', 'puppy'], ['pig', 'cow', 'sheep']] },
+    { name: '公園野餐', floor: 'grass', pool: [['flower', 'pink'], ['duck'], ['bird'], ['bunny'], ['bone'], ['soccer'], ['puppy'], ['frisbee'], ['fox'], ['dogbowl'], ['juicebox'], ['ball', 'blue'], ['apple', 'red'], ['bush'], ['bench'], ['tree'], ['pine'], ['lamp'], ['trash'], ['doghouse']], run: [['bunny', 'puppy', 'fox'], ['panda', 'sheep']] },
+    { name: '開心農場', floor: 'grass', pool: [['chicken'], ['bunny'], ['turnip'], ['onion'], ['egg'], ['puppy'], ['bone'], ['dogbowl'], ['broccoli'], ['barrel'], ['crate'], ['hay'], ['pumpkin'], ['sheep'], ['pig'], ['cow'], ['doghouse'], ['tree']], run: [['chicken', 'bunny', 'puppy'], ['pig', 'cow', 'sheep']] },
     { name: '水果市集', floor: 'sky', pool: [['plum'], ['cherry'], ['strawberry'], ['orange'], ['tomato'], ['apple', 'green'], ['pear'], ['peach'], ['melonslice'], ['avocado'], ['pie'], ['watermelon'], ['pumpkin']] },
     { name: '甜點店', floor: 'pink', pool: [['gumball'], ['hamster'], ['macaron', 'pink'], ['cookie'], ['icecream', 'mint'], ['jar'], ['candy', 'red'], ['cocoa'], ['popsicle', 'yellow'], ['cupcake', 'blue'], ['waffle'], ['donut', 'choc'], ['cake', 'pink']] },
     { name: '壽司吧', floor: 'blue', pool: [['maki', 'salmon'], ['maki', 'cucumber'], ['nigiri', 'tuna'], ['cup'], ['penguin'], ['plate'], ['shrimp'], ['kitten'], ['onigiri'], ['egg'], ['pot'], ['boat'], ['soydish']], run: [['penguin', 'kitten'], ['panda']] },
     { name: '玩具房', floor: 'purple', pool: [['cube', 'blue'], ['gumball'], ['dice', 'yellow'], ['star'], ['gift', 'red'], ['duck'], ['brick', 'green'], ['minitrain'], ['ringstack'], ['rocket'], ['arcade'], ['abacus'], ['helicopter'], ['jeep'], ['toytrain']] },
     { name: '家電行', floor: 'slate', pool: [['can', 'white'], ['walkie'], ['mic'], ['juicebox'], ['hairdryer'], ['headphones', 'pink'], ['phone'], ['blender'], ['radio'], ['microwave'], ['tv'], ['fridge']] },
-    { name: '運動場', floor: 'grass', pool: [['tennis'], ['billiard'], ['flipflop'], ['basketball'], ['soccer'], ['ball', 'red'], ['juicebox'], ['racket'], ['crate'], ['board'], ['boat']] },
+    { name: '運動場', floor: 'grass', pool: [['tennis'], ['bone'], ['billiard'], ['frisbee'], ['puppy'], ['flipflop'], ['basketball'], ['soccer'], ['ball', 'red'], ['juicebox'], ['racket'], ['crate'], ['board'], ['boat']] },
     { name: '樂器派對', floor: 'purple', pool: [['mic'], ['dice', 'white'], ['star'], ['headphones', 'purple'], ['gift', 'blue'], ['hairdryer'], ['trumpet'], ['radio'], ['tv'], ['violin'], ['abacus']] },
   ];
   // 各層的目標半徑：第 0 層原尺寸（開局就能吃），之後每層大約要再升 1～2 級
