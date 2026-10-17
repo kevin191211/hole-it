@@ -15,7 +15,8 @@
         ctx = null;
       }
     }
-    if (ctx && ctx.state === 'suspended') ctx.resume();
+    // iOS 切背景、來電後會是 interrupted，不只 suspended
+    if (ctx && ctx.state !== 'running' && ctx.state !== 'closed') ctx.resume().catch(() => {});
     return ctx;
   }
 

@@ -1061,6 +1061,7 @@ button {
 /* 轉移存檔 */
 .save-code { background: #fafafe; margin-bottom: 10px; }
 .save-code:focus { outline: none; border-color: #c4b5fd; }
+.save-code { -webkit-user-select: text; user-select: text; touch-action: auto; } /* 全域關掉選取，存檔碼要能貼上、複製 */
 
 /* ---------- 主選單：四格功能磚＋寶箱進度 ---------- */
 .menu-bottom { gap: 12px; }

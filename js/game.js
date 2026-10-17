@@ -173,7 +173,25 @@
     try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch (e) { return {}; }
   }
   const SAVE_DEFAULTS = () => ({ level: 1, unlocked: 1, stars: {}, coins: 200, muted: false, speed: 1, ctrl: 'joy', bag: {}, granted: {}, skins: ['classic'], skin: 'classic', fxs: ['none'], fx: 'none', trails: ['none'], trail: 'none', daily: {}, dex: {}, missions: null, chestsOpened: 0, checkin: { last: '', day: 0 }, event: {}, challenges: {} });
-  const save = Object.assign(SAVE_DEFAULTS(), loadSave());
+  // 欄位型別跟預設不同（null、陣列換物件、Infinity 等）就用預設，壞存檔不會讓遊戲開不起來
+  function cleanSave(d) {
+    const D = SAVE_DEFAULTS(), o = Object.assign({}, D, d && typeof d === 'object' ? d : {});
+    const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+    for (const k in D) {
+      const a = D[k], v = o[k];
+      const ok = a === null ? v === null || isObj(v)
+        : Array.isArray(a) ? Array.isArray(v)
+        : typeof a === 'object' ? isObj(v)
+        : typeof a === 'number' ? Number.isFinite(v)
+        : typeof v === typeof a;
+      if (!ok) o[k] = a;
+    }
+    o.unlocked = Math.max(1, Math.floor(o.unlocked));
+    o.level = Math.min(Math.max(1, Math.floor(o.level)), o.unlocked);
+    o.coins = Math.max(0, Math.floor(o.coins));
+    return o;
+  }
+  const save = cleanSave(loadSave());
   function persist() {
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* 無痕模式等情況忽略 */ }
   }
@@ -192,7 +210,7 @@
   }
   function applySave(data) {
     for (const k of Object.keys(save)) delete save[k];
-    Object.assign(save, SAVE_DEFAULTS(), data);
+    Object.assign(save, cleanSave(data));
     persist();
   }
   // 舊網址（Netlify）：帶著存檔跳到新網址，新網址那邊自動匯入
@@ -1137,7 +1155,17 @@
   });
   window.addEventListener('keyup', (e) => { keys[e.code] = false; });
   window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; drag = null; joyEnd(); });
-  document.addEventListener('visibilitychange', () => { if (document.hidden && G.state === 'playing') pause(); });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) return;
+    if (G.state === 'playing') pause();
+    persist();
+  });
+  window.addEventListener('pagehide', persist);
+  // 手機轉成橫向會被「請轉回直向」遮住：自動暫停，不然時間照跑
+  const landscapeMQ = matchMedia('(orientation: landscape) and (max-height: 500px) and (pointer: coarse)');
+  const onRotate = () => { if (landscapeMQ.matches && G.state === 'playing') pause(); };
+  if (landscapeMQ.addEventListener) landscapeMQ.addEventListener('change', onRotate);
+  else landscapeMQ.addListener(onRotate);
   document.addEventListener('contextmenu', (e) => e.preventDefault());
   document.addEventListener('gesturestart', (e) => e.preventDefault());
 
@@ -1168,6 +1196,7 @@
       showTimer();
       if (sec <= 10 && sec > 0) A.tick();
     }
+    if (G.time > 0) G.overtime = 0; // 等待結算時又加了時間：恢復正常遊戲
     if (G.time <= 0) {
       G.time = 0;
       // 時間到時還有東西正在掉進洞：先等它們落地算完，再判定輸贏（最多等 3 秒）
@@ -1189,7 +1218,11 @@
     for (let i = G.sinking.length - 1; i >= 0; i--) {
       const m = G.sinking[i];
       m.position.y -= dt * 2.2;
-      if (m.position.y < -1.6) { world.remove(m); G.sinking.splice(i, 1); }
+      if (m.position.y < -1.6) {
+        world.remove(m);
+        if (m.userData.own) { m.geometry.dispose(); m.material.dispose(); }
+        G.sinking.splice(i, 1);
+      }
     }
 
     for (const k in G.boosts) {
@@ -2114,7 +2147,7 @@
   // ---------- 道具：到指定關卡解鎖並送 1 個；數量用完後點擊會用金幣購買 ----------
   function grantBoosters() {
     G.newBoost = [];
-    if (G.daily) return; // 每日挑戰的關卡編號是 999，不能拿來判斷解鎖
+    if (G.daily || G.event || G.challenge) return; // 每日挑戰、活動關、好友挑戰的關卡編號不能拿來判斷解鎖
     for (const k in BOOST) {
       if (G.n >= BOOST[k].unlock && !save.granted[k]) {
         G.newBoost.push(k);
@@ -2333,7 +2366,7 @@
     save.stars[G.n] = Math.max(save.stars[G.n] || 0, stars);
     const starGain = totalStars() - starsBefore, chestNew = chestReady() - readyBefore;
     save.unlocked = Math.max(save.unlocked, G.n + 1);
-    save.level = G.n + 1;
+    if (G.n + 1 >= save.unlocked) save.level = G.n + 1; // 重玩舊關不把「開始」拉回舊關
     save.coins += reward; // 獎勵跟著過關一起存檔，動畫只負責顯示
     persist();
     A.win();
@@ -3409,7 +3442,7 @@
     history.replaceState(null, '', location.pathname + location.search);
     if (data) {
       const fresh = save.unlocked <= 1 && !Object.keys(save.stars || {}).length;
-      if (fresh || data.unlocked > save.unlocked) {
+      if (fresh) {
         applySave(data);
         importDone();
       } else confirmImport(data);
