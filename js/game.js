@@ -190,7 +190,9 @@
     location.replace(NEW_HOME + '#save=' + encodeURIComponent(saveCode()));
     return;
   }
+  if (save.music == null) save.music = save.muted ? 'off' : 'happy';
   A.setMuted(save.muted);
+  A.setMusic(save.music);
 
   // ---------- 渲染器 ----------
   const canvas = $('game');
@@ -1127,7 +1129,8 @@
     if (sec !== G.shownSec) {
       G.shownSec = sec;
       showTimer();
-      if (sec <= 10 && sec > 0) A.tick();
+      if (sec <= 10 && sec > 0) A.tick(sec);
+      A.musicMood(sec <= 10 ? 'hurry' : '');
     }
     if (G.time <= 0) {
       G.time = 0;
@@ -1156,7 +1159,7 @@
     for (const k in G.boosts) {
       if (G.boosts[k] > 0) {
         G.boosts[k] = Math.max(0, G.boosts[k] - dt);
-        if (!G.boosts[k]) refreshBoosters();
+        if (!G.boosts[k]) { refreshBoosters(); A.fxEnd(); }
       }
     }
     updateBoostRings();
@@ -1164,6 +1167,7 @@
       G.fx[k] -= dt;
       if (G.fx[k] <= 0) {
         delete G.fx[k];
+        A.fxEnd();
         popup(TREASURE.find((t) => t.id === k).name + ' 結束', 'info');
       }
     }
@@ -1685,6 +1689,7 @@
     if (e.kind === 'treasure') { openChest(); return; }
     missionBump('eat', 1);
     missionBump('combo', G.combo + 1, true);
+    const big = Math.min(1, e.r / hole.r); // 吞下的東西跟黑洞比有多大，給音效用
     dexAdd(e.kind);
     if (e.kind === 'key') openDoor(e.color);
     const gi = G.goals.findIndex((g) => g.got < g.need && match(e, g));
@@ -1693,17 +1698,22 @@
       g.got = Math.min(g.need, g.got + (g.kind === 'star' ? starPts(e) : 1));
       grow(e);
       feverEat();
-      A.pop(G.combo);
+      A.pop(G.combo, big);
       addScore(starPts(e), true);
       // 連吃獎勵：每連吃 25 個（每個間隔不到 1 秒）加 1 秒
       if ((G.combo + 1) % 25 === 0) {
         G.time += 1;
         popup('連吃 ×' + (G.combo + 1) + '　+1 秒', 'combo', 46);
         bumpTimer('bump-good');
-      } else if (G.combo >= 4 && G.combo % 5 === 4) popup('連吃 ×' + (G.combo + 1), 'combo', 46);
+        A.streak(true);
+      } else if (G.combo >= 4 && G.combo % 5 === 4) {
+        popup('連吃 ×' + (G.combo + 1), 'combo', 46);
+        A.streak(false);
+      }
       updateGoal(gi);
       if (G.L.boss === e.kind && e.base > 1) {
         popup('打倒頭目！', 'combo', 60);
+        A.bossDown();
         G.shake = 0.9;
         G.hitstop = 0.14;
         vibrate([40, 30, 80]);
@@ -1717,13 +1727,14 @@
       if (G.boosts.shield > 0) { // 防護罩：不扣時間
         popup('🛡️ 擋住了！', 'good');
         shieldHit();
+        A.shield();
       }
       else penalty(e);
       return;
     }
     grow(e);
     feverEat();
-    A.gulp(G.combo);
+    A.gulp(G.combo, big);
     addScore(starPts(e), false);
   }
 
@@ -2153,7 +2164,7 @@
     else if (save.coins >= cfg.cost) setCoins(save.coins - cfg.cost, true);
     else return nope('金幣不足');
     persist();
-    A.boost();
+    A.booster(k);
     G.boosts[k] = cfg.dur;
     missionBump('boost', 1);
     popup({ grow: '黑洞變大！', magnet: '閃電吸取！', zoom: '視野放大！', freeze: '時間暫停！', shoes: '加速！', shield: '防護罩！' }[k], 'info');
@@ -2238,6 +2249,7 @@
       </div>
       <div class="m-sec">設定</div>
       <div class="set-box">
+        <div class="set-row set-stack"><span>背景音樂</span>${musicSeg(' mini music')}</div>
         <div class="set-row"><span>音效</span><button class="switch${save.muted ? '' : ' on'}" data-act="sound" aria-label="音效"><i></i></button></div>
         <div class="set-row"><span>操控方式</span><div class="seg mini">${Object.keys(CTRL_ZH).map((k) => `<button class="${save.ctrl === k ? 'on' : ''}" data-act="ctrl" data-ctrl="${k}">${CTRL_ZH[k]}</button>`).join('')}</div></div>
         <div class="set-row"><span>移動速度</span><b id="speedVal">×${speedMul().toFixed(2)}</b></div>
@@ -2257,6 +2269,19 @@
       <div class="m-note m-ver">版本 ${VERSION}・${BUILD}</div>`);
   }
 
+  // 背景音樂選擇：關、輕快、放鬆、電玩
+  function musicSeg(cls) {
+    return `<div class="seg${cls || ''}">${[{ id: 'off', name: '關' }].concat(A.tracks).map((t) => `<button class="${save.music === t.id ? 'on' : ''}" data-act="music" data-music="${t.id}">${t.name}</button>`).join('')}</div>`;
+  }
+  function musicModal() {
+    showModal(`<h2>🎵 背景音樂</h2>
+      <div class="m-btns">
+        ${musicSeg()}
+        <div class="m-note">音效開關在旁邊的喇叭按鈕</div>
+        <button class="big-btn" data-act="close">好</button>
+      </div>`);
+  }
+
   function pause() {
     if (G.state !== 'playing') return;
     G.state = 'paused';
@@ -2268,6 +2293,8 @@
   function win() {
     G.state = 'won';
     stopFever();
+    A.musicMood('');
+    A.musicDuck(4);
     const ratio = G.time / G.total;
     const stars = ratio >= 0.4 ? 3 : ratio >= 0.18 ? 2 : 1;
     const reward = 20 + stars * 15;
@@ -2518,6 +2545,8 @@
   function lose() {
     G.state = 'lost';
     stopFever();
+    A.musicMood('');
+    A.musicDuck(4);
     persist();
     drag = null;
     joyEnd();
@@ -2639,6 +2668,13 @@
       const late = G.lateEats.splice(0);
       for (const e of late) if (G.state === 'playing') eaten(e);
     },
+    music(btn) {
+      save.music = btn.dataset.music;
+      persist();
+      A.setMusic(save.music);
+      updateSoundBtn();
+      btn.parentNode.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === btn));
+    },
     ctrl(btn) {
       save.ctrl = btn.dataset.ctrl;
       persist();
@@ -2718,10 +2754,12 @@
 
   function updateSoundBtn() {
     $('btnSound').textContent = save.muted ? '🔇' : '🔊';
+    $('btnMusic').classList.toggle('off', save.music === 'off');
   }
 
   function showMenu() {
     closeModal();
+    A.musicMood('');
     $('hud').classList.add('hidden');
     $('fx').innerHTML = '';
     save.level = Math.min(save.level, save.unlocked);
@@ -2762,6 +2800,7 @@
     updateSoundBtn();
     A.click();
   });
+  $('btnMusic').addEventListener('click', () => { A.unlock(); A.click(); musicModal(); });
   $('btnPause').addEventListener('click', () => { A.click(); pause(); });
 
   // ---------- 金幣飛入動畫：從某個位置飛到金幣顯示框 ----------
@@ -3036,7 +3075,9 @@
       </div>`);
   }
   function importDone() {
+    if (save.music == null) save.music = save.muted ? 'off' : 'happy';
     A.setMuted(save.muted);
+    A.setMusic(save.music);
     showMenu();
     showModal(`<h2>存檔轉移完成！</h2><div class="m-note">${saveSummary(save)}</div>
       <div class="m-btns"><button class="big-btn" data-act="close">開始玩</button></div>`);
