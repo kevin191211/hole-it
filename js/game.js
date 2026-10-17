@@ -47,6 +47,10 @@
     { id: 'galaxy', name: '星空紫', price: 500, color: 0x7e57c2 },
     { id: 'fire', name: '火焰', price: 700, anim: 'fire' },
     { id: 'rainbow', name: '彩虹', price: 900, anim: 'rainbow' },
+    { id: 'sakura', name: '櫻花', price: 250, color: 0xffb7c5 },
+    { id: 'matcha', name: '抹茶', price: 250, color: 0x9ccc65 },
+    { id: 'choco', name: '巧克力', price: 300, color: 0x6d4c41 },
+    { id: 'aurora', name: '極光', price: 1000, anim: 'aurora' },
     // 扭蛋限定：商店不能直接買
     { id: 'neon', name: '霓虹', gacha: true, anim: 'neon' },
     { id: 'ice', name: '冰晶', gacha: true, color: 0x9be7ff },
@@ -62,6 +66,8 @@
     { id: 'bubble', name: '泡泡', price: 400, tile: 2, colors: [0xb3e5fc, 0xe1f5fe, 0x80deea] },
     { id: 'pixel', name: '像素', price: 500, tile: 3, colors: [0xff5252, 0xffeb3b, 0x69f0ae, 0x40c4ff, 0xe040fb] },
     { id: 'firework', name: '煙火', price: 700, tile: 4, colors: [0xff5252, 0xffd740, 0x69f0ae, 0x40c4ff, 0xe040fb] },
+    { id: 'confetti', name: '彩紙', price: 450, tile: 3, colors: [0xff5252, 0xffd740, 0x69f0ae, 0x40c4ff, 0xe040fb, 0xffffff] },
+    { id: 'rainbowstar', name: '彩虹星', price: 600, tile: 0, colors: [0xff5252, 0xffa726, 0xffeb3b, 0x66bb6a, 0x42a5f5, 0xab47bc] },
     { id: 'snow', name: '雪花', gacha: true, tile: 5, colors: [0xffffff, 0xe1f5fe, 0xb3e5fc] },
     { id: 'coin', name: '金幣雨', gacha: true, tile: 6, colors: [0xffc928, 0xffe082] },
     { id: 'meteor', name: '流星', chest: true, tile: 7, colors: [0xfff3b0, 0x9be7ff, 0xffffff] },
@@ -91,16 +97,29 @@
     time: { name: '多 15 秒', icon: '⏱️', cost: 80 },
     arrow: { name: '目標指引', icon: '🧭', cost: 40 },
   };
+  // 移動拖尾：黑洞移動時在後方留下粒子（tile 同吞噬特效；g 為重力，負的會往上飄；加速鞋生效時改顯示加速鞋的拖尾）
+  const TRAILS = [
+    { id: 'none', name: '無拖尾', price: 0 },
+    { id: 'stardust', name: '星塵', price: 300, tile: 0, g: -0.3, s: 0.28, colors: [0xffd54f, 0xfff59d, 0xffffff] },
+    { id: 'bubble', name: '泡泡', price: 300, tile: 2, g: -0.8, s: 0.35, colors: [0xb3e5fc, 0xe1f5fe, 0x80deea] },
+    { id: 'heart', name: '愛心', price: 400, tile: 1, g: -0.6, s: 0.32, colors: [0xff4f9a, 0xff80ab, 0xe91e63] },
+    { id: 'pixel', name: '像素', price: 450, tile: 3, g: 2, s: 0.2, colors: [0xff5252, 0xffeb3b, 0x69f0ae, 0x40c4ff, 0xe040fb] },
+    { id: 'spark', name: '火花', price: 500, tile: 4, g: -0.4, s: 0.38, colors: [0xff7043, 0xffd54f, 0xff5252] },
+    { id: 'rainbow', name: '彩虹', price: 800, tile: 4, g: -0.2, s: 0.4, rainbow: true, colors: [0xff5252, 0xffd740, 0x69f0ae, 0x40c4ff, 0xe040fb] },
+    { id: 'snow', name: '雪花', gacha: true, tile: 5, g: 0.4, s: 0.32, colors: [0xffffff, 0xe1f5fe, 0xb3e5fc] },
+    { id: 'comet', name: '彗星', gacha: true, tile: 7, g: -0.2, s: 0.45, colors: [0xfff3b0, 0x9be7ff, 0xffffff] },
+  ];
   // 扭蛋：w 為權重（合計 100）；限定外框／特效都抽齊了就換成 300 金幣
   const GACHA_COST = 100;
   const GACHA = [
     { w: 30, type: 'coins', n: 50 },
     { w: 10, type: 'coins', n: 150 },
     { w: 2, type: 'coins', n: 500 },
-    { w: 30, type: 'boost', n: 1 },
+    { w: 28, type: 'boost', n: 1 },
     { w: 10, type: 'boost', n: 3 },
-    { w: 12, type: 'skin' },
-    { w: 6, type: 'fx' },
+    { w: 10, type: 'skin' },
+    { w: 5, type: 'fx' },
+    { w: 5, type: 'trail' },
   ];
   const KEY_COLOR = { red: 0xe53935, blue: 0x1e88e5, yellow: 0xfdd835 };
   let spinTex = null;
@@ -125,6 +144,7 @@
   }
   const skinOf = (id) => SKINS.find((k) => k.id === id) || SKINS[0];
   const fxOf = (id) => EAT_FX.find((k) => k.id === id) || EAT_FX[0];
+  const trailOf = (id) => TRAILS.find((k) => k.id === id) || TRAILS[0];
   const hex = (c) => '#' + c.toString(16).padStart(6, '0');
   const todayNum = () => Math.floor((Date.now() - new Date().getTimezoneOffset() * 60000) / 86400000);
   const todayKey = () => new Date(todayNum() * 86400000).toISOString().slice(0, 10);
@@ -142,7 +162,7 @@
   function loadSave() {
     try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch (e) { return {}; }
   }
-  const SAVE_DEFAULTS = () => ({ level: 1, unlocked: 1, stars: {}, coins: 200, muted: false, speed: 1, ctrl: 'joy', bag: {}, granted: {}, skins: ['classic'], skin: 'classic', fxs: ['none'], fx: 'none', daily: {}, dex: {}, missions: null, chestsOpened: 0 });
+  const SAVE_DEFAULTS = () => ({ level: 1, unlocked: 1, stars: {}, coins: 200, muted: false, speed: 1, ctrl: 'joy', bag: {}, granted: {}, skins: ['classic'], skin: 'classic', fxs: ['none'], fx: 'none', trails: ['none'], trail: 'none', daily: {}, dex: {}, missions: null, chestsOpened: 0 });
   const save = Object.assign(SAVE_DEFAULTS(), loadSave());
   function persist() {
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* 無痕模式等情況忽略 */ }
@@ -519,7 +539,9 @@
       p.drag = 0;
       let out, up, col = f.colors[Math.floor(Math.random() * f.colors.length)];
       switch (f.id) {
-        case 'star': out = rnd(2, 4); up = rnd(4, 7); p.g = 14; p.max = 0.75; p.s = rnd(0.35, 0.55); break;
+        case 'star':
+        case 'rainbowstar': out = rnd(2, 4); up = rnd(4, 7); p.g = 14; p.max = 0.75; p.s = rnd(0.35, 0.55); break;
+        case 'confetti': out = rnd(2, 4); up = rnd(5, 8); p.g = 6; p.drag = 1.6; p.max = 1.1; p.s = rnd(0.2, 0.32); break;
         case 'heart': out = rnd(0.6, 1.4); up = rnd(2, 3.5); p.g = -1; p.max = 1.0; p.s = rnd(0.4, 0.6); break;
         case 'bubble': out = rnd(0.5, 1.5); up = rnd(1.5, 3); p.g = -0.6; p.drag = 1; p.max = 1.2; p.s = rnd(0.25, 0.6); break;
         case 'pixel': out = rnd(3, 5); up = rnd(5, 8); p.g = 20; p.max = 0.8; p.s = rnd(0.18, 0.3); break;
@@ -1183,6 +1205,7 @@
       else if (sk.anim === 'fire') rim.material.color.setHSL(0.06 + Math.sin(G.t * 5) * 0.03, 1, 0.55);
       else if (sk.anim === 'starry') rim.material.color.setHSL(0.64 + 0.1 * Math.sin(G.t * 1.6), 0.85, 0.64);
       else if (sk.anim === 'neon') rim.material.color.setHSL(0.5 + 0.33 * (0.5 + 0.5 * Math.sin(G.t * 2.5)), 1, 0.6);
+      else if (sk.anim === 'aurora') rim.material.color.setHSL(0.45 + 0.2 * Math.sin(G.t * 1.2), 0.8, 0.6);
       else rim.material.color.set(sk.color);
     }
     if (spot.intensity > 0) {
@@ -1258,16 +1281,24 @@
     const mx = hole.pos.x - lastHP.x, mz = hole.pos.z - lastHP.z, d = Math.hypot(mx, mz);
     lastHP.x = hole.pos.x;
     lastHP.z = hole.pos.z;
-    if (!(G.boosts.shoes > 0) || G.state !== 'playing' || d < 1e-4 || d / Math.max(dt, 1e-4) < 0.8) return;
+    const shoes = G.boosts.shoes > 0, tr = trailOf(save.trail);
+    if (!(shoes || tr.colors) || G.state !== 'playing' || d < 1e-4 || d / Math.max(dt, 1e-4) < 0.8) return;
     trailT -= dt;
     if (trailT > 0) return;
-    trailT = 0.03;
+    trailT = shoes ? 0.03 : 0.05;
     const k = fxK(), bx = -mx / d, bz = -mz / d;
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < (shoes ? 2 : 1); i++) {
       const a = (Math.random() - 0.5) * 1.6, c = Math.cos(a), s = Math.sin(a);
       const ux = bx * c - bz * s, uz = bx * s + bz * c, R = hole.vis * (1.1 + Math.random() * 0.15);
-      fxSpawn(hole.pos.x + ux * R, 0.15 * k, hole.pos.z + uz * R, ux * 0.6 * k, 0.8 * k, uz * 0.6 * k,
-        -0.5 * k, 1.5, 0.45, (0.3 + Math.random() * 0.15) * k, i ? 0x7ff3ff : 0xffffff, 4);
+      if (shoes) {
+        fxSpawn(hole.pos.x + ux * R, 0.15 * k, hole.pos.z + uz * R, ux * 0.6 * k, 0.8 * k, uz * 0.6 * k,
+          -0.5 * k, 1.5, 0.45, (0.3 + Math.random() * 0.15) * k, i ? 0x7ff3ff : 0xffffff, 4);
+        continue;
+      }
+      // 商店買的拖尾：比加速鞋稀疏、飄久一點
+      const col = tr.rainbow ? _fc.setHSL((G.t * 0.5) % 1, 0.9, 0.6).getHex() : tr.colors[Math.floor(Math.random() * tr.colors.length)];
+      fxSpawn(hole.pos.x + ux * R, 0.15 * k, hole.pos.z + uz * R, ux * 0.4 * k, 0.6 * k, uz * 0.4 * k,
+        tr.g * k, 1.5, 0.6, (tr.s + Math.random() * 0.1) * k, col, tr.tile);
     }
   }
 
@@ -2352,7 +2383,10 @@
   }
 
   // 商店：外框／吞噬特效／扭蛋 三個分頁
-  const SHOP_TABS = { skin: '外框', fx: '吞噬特效', gacha: '扭蛋' };
+  const SHOP_TABS = { skin: '外框', fx: '特效', trail: '拖尾', boost: '道具', gacha: '扭蛋' };
+  // 收藏類商品：[清單, 存檔欄位, 名稱, 預設款]，扭蛋與購買共用
+  const COLLECT = { skin: [SKINS, 'skins', '外框', 'classic'], fx: [EAT_FX, 'fxs', '特效', 'none'], trail: [TRAILS, 'trails', '拖尾', 'none'] };
+  const BULK = 5; // 道具一次買 5 個打 8 折
   let shopTab = 'skin', gachaBusy = false;
   function shopMsg(text) {
     const el = $('shopMsg');
@@ -2376,7 +2410,8 @@
         const sw = k.anim === 'rainbow' ? 'conic-gradient(#f44,#fc3,#4c4,#3cf,#a4f,#f44)'
           : k.anim === 'fire' ? 'radial-gradient(#ffd54f,#ff7043 60%,#d32f2f)'
           : k.anim === 'neon' ? 'linear-gradient(135deg,#22d3ee,#e879f9)'
-          : k.anim === 'starry' ? 'linear-gradient(135deg,#4f6bff,#b36bff)' : hex(k.color);
+          : k.anim === 'starry' ? 'linear-gradient(135deg,#4f6bff,#b36bff)'
+          : k.anim === 'aurora' ? 'linear-gradient(135deg,#34d399,#22d3ee,#a78bfa)' : hex(k.color);
         return `<button class="skin${on ? ' on' : ''}${k.gacha && !own ? ' rare' : ''}${k.chest && !own ? ' chestlock' : ''}" data-act="skin" data-skin="${k.id}">
           <i class="sw" style="background:${sw}"></i><span>${k.name}</span><small>${priceTag(own, on, k)}</small></button>`;
       }).join('')}</div>`;
@@ -2387,16 +2422,37 @@
         return `<button class="skin${on ? ' on' : ''}${f.gacha && !own ? ' rare' : ''}${f.chest && !own ? ' chestlock' : ''}" data-act="fx" data-fx="${f.id}">
           <i class="fx-ic"><img src="${fxIcon(f)}" alt=""></i><span>${f.name}</span><small>${priceTag(own, on, f)}</small></button>`;
       }).join('')}</div>`;
+    } else if (shopTab === 'trail') {
+      body = `<div class="m-note">黑洞移動時在後面留下的軌跡</div>
+      <div class="skin-grid">${TRAILS.map((f) => {
+        const own = (save.trails || ['none']).includes(f.id), on = (save.trail || 'none') === f.id;
+        return `<button class="skin${on ? ' on' : ''}${f.gacha && !own ? ' rare' : ''}" data-act="trail" data-trail="${f.id}">
+          <i class="fx-ic"><img src="${fxIcon(f)}" alt=""></i><span>${f.name}</span><small>${priceTag(own, on, f)}</small></button>`;
+      }).join('')}</div>`;
+    } else if (shopTab === 'boost') {
+      body = `<div class="m-note">先買起來放著，遊戲中點下方道具使用；一次買 ${BULK} 個打 8 折</div>
+      <div class="boost-shop">${Object.keys(BOOST).map((k) => {
+        const b = BOOST[k], lock = save.unlocked < b.unlock;
+        return `<div class="bshop"><i class="bs-ic">${b.icon}</i>
+          <div class="bs-info"><b>${b.name}</b><span>${b.desc}</span><small>持有 ${save.bag[k] || 0} 個${lock ? `・第 ${b.unlock} 關解鎖` : ''}</small></div>
+          <div class="bs-buy">
+            <button data-act="buyBoost" data-boost="${k}" data-n="1">×1 <i class="coin"></i>${b.cost}</button>
+            <button class="bulk" data-act="buyBoost" data-boost="${k}" data-n="${BULK}">×${BULK} <i class="coin"></i>${b.cost * (BULK - 1)}</button>
+          </div></div>`;
+      }).join('')}</div>`;
     } else {
+      const pct = (t) => GACHA.filter((g) => g.type === t).reduce((n, g) => n + g.w, 0);
+      const only = (list) => list.filter((k) => k.gacha).map((k) => k.name).join('、');
       body = `<div class="gacha">
         <div class="capsule" id="capsule"><i></i></div>
-        <div class="gacha-out" id="gachaOut">抽金幣、道具，還有扭蛋限定的外框和特效！</div>
+        <div class="gacha-out" id="gachaOut">抽金幣、道具，還有扭蛋限定的外框、特效和拖尾！</div>
       </div>
       <button class="big-btn purple" data-act="gacha" ${gachaBusy ? 'disabled' : ''}>轉一次 <small><i class="coin"></i>${GACHA_COST}</small></button>
       <div class="gacha-info">
-        <div><b>機率</b><span>金幣 42%・道具 40%・限定外框 12%・限定特效 6%</span></div>
-        <div><b>限定外框</b><span>${SKINS.filter((k) => k.gacha).map((k) => k.name).join('、')}</span></div>
-        <div><b>限定特效</b><span>${EAT_FX.filter((k) => k.gacha).map((k) => k.name).join('、')}</span></div>
+        <div><b>機率</b><span>金幣 ${pct('coins')}%・道具 ${pct('boost')}%・限定外框 ${pct('skin')}%・限定特效 ${pct('fx')}%・限定拖尾 ${pct('trail')}%</span></div>
+        <div><b>限定外框</b><span>${only(SKINS)}</span></div>
+        <div><b>限定特效</b><span>${only(EAT_FX)}</span></div>
+        <div><b>限定拖尾</b><span>${only(TRAILS)}</span></div>
       </div>`;
     }
     showModal(`
@@ -2420,9 +2476,8 @@
       save.bag[k] = (save.bag[k] || 0) + g.n;
       return { big: false, html: `${BOOST[k].icon} ${BOOST[k].name} ×${g.n}` };
     }
-    const skin = g.type === 'skin', what = skin ? '外框' : '特效';
-    const list = skin ? SKINS : EAT_FX;
-    const owned = skin ? (save.skins = save.skins || ['classic']) : (save.fxs = save.fxs || ['none']);
+    const [list, key, what, base] = COLLECT[g.type];
+    const owned = (save[key] = save[key] || [base]);
     const left = list.filter((k) => k.gacha && !owned.includes(k.id));
     if (!left.length) {
       save.coins += 300;
@@ -2430,7 +2485,7 @@
     }
     const k = left[Math.floor(Math.random() * left.length)];
     owned.push(k.id);
-    return { big: true, html: `限定${what}「${k.name}」！<small>到「${skin ? '外框' : '吞噬特效'}」分頁換上</small>` };
+    return { big: true, html: `限定${what}「${k.name}」！<small>到「${SHOP_TABS[g.type]}」分頁換上</small>` };
   }
 
   function spinGacha(btn) {
@@ -2532,6 +2587,29 @@
       shopModal('fx');
     },
     gacha(btn) { spinGacha(btn); },
+    trail(btn) {
+      const f = trailOf(btn.dataset.trail);
+      save.trails = save.trails || ['none'];
+      if (!save.trails.includes(f.id)) {
+        if (f.gacha) return shopMsg('這款只能從扭蛋抽到');
+        if (save.coins < f.price) return shopMsg('金幣不夠');
+        setCoins(save.coins - f.price, true);
+        save.trails.push(f.id);
+        A.coin();
+      }
+      save.trail = f.id;
+      persist();
+      shopModal('trail');
+    },
+    buyBoost(btn) {
+      const k = btn.dataset.boost, n = +btn.dataset.n, cost = BOOST[k].cost * (n >= BULK ? BULK - 1 : 1);
+      if (save.coins < cost) return shopMsg('金幣不夠');
+      setCoins(save.coins - cost, true);
+      save.bag[k] = (save.bag[k] || 0) + n;
+      persist();
+      A.coin();
+      shopModal('boost');
+    },
     close() { closeModal(); },
     skin(btn) {
       const k = skinOf(btn.dataset.skin);
