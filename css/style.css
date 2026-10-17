@@ -944,3 +944,147 @@ button {
 #confetti .spark { position: absolute; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; background: #fff6c2; box-shadow: 0 0 8px 2px rgba(255, 200, 40, 0.9); animation: spark 0.6s ease-out forwards; }
 @keyframes spark { 0% { transform: translate(0, 0) scale(1.2); opacity: 1; } 100% { transform: translate(var(--dx), var(--dy)) scale(0.2); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { #confetti { display: none; } }
+
+/* ========== 介面美化 ========== */
+/* 對話框：分段標題加兩側細線、捲軸變細、長內容的主按鈕固定在底部 */
+.card { scrollbar-width: thin; scrollbar-color: #d9d2f2 transparent; }
+.card::-webkit-scrollbar { width: 5px; }
+.card::-webkit-scrollbar-thumb { background: #d9d2f2; border-radius: 3px; }
+.card h2 { line-height: 1.2; }
+.m-kicker { display: inline-block; padding: 3px 12px; border-radius: 999px; background: #f0eaff; font-size: 14px; margin-bottom: 4px; }
+.m-sec { display: flex; align-items: center; gap: 10px; margin: 16px 0 10px; font-size: 13px; letter-spacing: 1px; }
+.m-sec::before, .m-sec::after { content: ''; flex: 1; height: 1.5px; background: #ece8f7; border-radius: 1px; }
+.m-sec.bad::before, .m-sec.bad::after { background: #ffd6db; }
+.m-note { line-height: 1.5; }
+.m-note .coin { font-size: 14px; }
+.m-tip { text-align: left; line-height: 1.45; font-size: 14px; margin: 0 0 4px; border: 1.5px solid #fde68a; }
+.m-time { display: inline-flex; align-items: center; gap: 4px; margin: -6px 0 12px; padding: 4px 14px; border-radius: 999px; background: #f5f2ff; font-size: 15px; }
+.m-time b { color: var(--accent); font-variant-numeric: tabular-nums; }
+.m-dock { position: sticky; bottom: -22px; margin: 6px -22px -22px; padding: 14px 22px 22px; background: linear-gradient(rgba(255, 255, 255, 0), #fff 18px); z-index: 1; }
+.m-ver { margin-top: 10px; opacity: 0.7; font-size: 12px; }
+
+/* 任務物卡片：縮小一點，三、四個也能排一列 */
+.m-items { gap: 8px; margin-bottom: 0; }
+.m-item { width: 80px; padding: 8px 4px 7px; border: 2px solid #ebe5ff; }
+.m-item.bad { border-color: #ffc9d0; }
+.m-item img { width: 48px; height: 48px; }
+.m-item b { font-size: 18px; line-height: 1.2; }
+.m-item .no-sign { width: 48px; height: 48px; margin-left: -24px; }
+.m-item.bad b { color: var(--bad); font-size: 15px; }
+
+/* 新道具解鎖 */
+.m-new { display: flex; align-items: center; gap: 12px; margin-top: 10px; padding: 10px 12px; border-radius: 16px; background: linear-gradient(135deg, #fff8dc, #fff1c2); border: 2px solid #ffd85e; text-align: left; }
+.m-new > i { flex: none; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-size: 24px; background: radial-gradient(circle at 50% 35%, #5d7fd6, #2f4a94); border: 3px solid #f2c94c; }
+.m-new b { display: block; font-size: 15px; color: #7a4a00; }
+.m-new span { display: block; font-size: 13px; color: var(--ink); line-height: 1.4; margin-top: 1px; }
+.m-new small { display: block; font-size: 12px; color: #a16207; font-weight: 600; margin-top: 3px; }
+
+/* 開局加成 */
+.pre-row { margin: 0; }
+.pre { padding: 10px 2px 8px; border-radius: 16px; transition: transform 0.1s; }
+.pre:active { transform: scale(0.96); }
+.pre > i { font-size: 26px; }
+.pre small { margin-top: 2px; padding: 1px 8px; border-radius: 999px; background: #fff4cc; color: #6b4a00; font-weight: 700; }
+.pre.off small { background: #f1f1f4; color: var(--ink-soft); font-weight: 600; }
+.pre.on { box-shadow: 0 0 0 2px var(--good) inset; }
+.pre.on small { background: #dcfce7; color: #15803d; }
+
+/* 進度小籤（暫停、失敗） */
+.progress-list { gap: 8px; margin: 4px 0 2px; }
+.progress-list div { border: 2px solid #ebe5ff; padding: 3px 12px 3px 4px; font-variant-numeric: tabular-nums; }
+.progress-list div.ok { background: #dcfce7; border-color: #86efac; color: #15803d; }
+
+/* 暫停：設定區、道具說明 */
+.set-box { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-radius: 18px; background: #f8f6ff; text-align: left; }
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 16px; font-weight: 700; min-height: 36px; }
+.set-box .speed-row { margin-top: -4px; }
+.set-box .speed-btn { width: 38px; height: 38px; background: #fff; }
+.set-box .m-note { text-align: center; margin-top: -2px; font-size: 12px; }
+.seg.mini { padding: 3px; border-radius: 14px; background: #ebe5ff; }
+.seg.mini button { flex: none; padding: 6px 16px; font-size: 15px; border-radius: 11px; }
+.switch { position: relative; width: 54px; height: 32px; border-radius: 16px; background: #d4cfe6; transition: background 0.2s; flex: none; }
+.switch i { position: absolute; left: 3px; top: 3px; width: 26px; height: 26px; border-radius: 50%; background: #fff; box-shadow: 0 2px 4px rgba(43, 35, 80, 0.3); transition: transform 0.2s; }
+.switch.on { background: var(--good); }
+.switch.on i { transform: translateX(22px); }
+.boost-help { gap: 6px; }
+.bh { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 14px; background: #f8f6ff; }
+.bh > i { flex: none; width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-size: 19px; background: radial-gradient(circle at 50% 35%, #5d7fd6, #2f4a94); border: 2.5px solid #f2c94c; }
+.bh b { display: flex; align-items: center; gap: 6px; font-size: 14px; }
+.bh em { font-style: normal; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: #e9e5f7; color: var(--ink-soft); }
+.bh em.dur { background: #e0f2fe; color: #0369a1; }
+.bh span { display: block; font-size: 12.5px; color: var(--ink-soft); line-height: 1.4; margin-top: 1px; }
+.bh.off { opacity: 0.55; }
+.bh.off > i { filter: grayscale(1); }
+
+/* 失敗 */
+.lose-ic { font-size: 50px; line-height: 1; margin: -4px 0 6px; animation: loseRing 0.5s ease-in-out 2; }
+@keyframes loseRing { 25% { transform: rotate(-14deg); } 75% { transform: rotate(14deg); } }
+.cont-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 17px; line-height: 1.15; padding: 9px 6px; }
+.cont-btn .price { display: inline-flex; align-items: center; gap: 3px; padding: 1px 9px; border-radius: 999px; background: #fff4cc; color: #6b4a00; font-size: 13px; font-weight: 700; }
+.cont-btn .price .coin { font-size: 14px; }
+
+/* 過關 */
+.reward { margin-top: 10px; }
+
+/* 商店 */
+.shop-msg:empty { min-height: 0; }
+.shop-msg { margin-top: 2px; }
+.skin { border-radius: 16px; transition: transform 0.1s; padding: 9px 2px 8px; }
+.skin:active { transform: scale(0.95); }
+.skin.on { box-shadow: 0 0 0 2px var(--good) inset; }
+.skin.on small { color: #15803d; font-weight: 700; }
+.skin small { white-space: nowrap; }
+.skin-grid { margin-bottom: 6px; }
+.shop-tabs button { padding: 9px 0; }
+
+/* 扭蛋說明 */
+.big-btn small { display: inline-flex; align-items: center; gap: 3px; vertical-align: 2px; }
+.gacha-info { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; padding: 10px 12px; border-radius: 14px; background: #f8f6ff; text-align: left; font-size: 12.5px; color: var(--ink-soft); line-height: 1.4; }
+.gacha-info div { display: flex; gap: 8px; }
+.gacha-info b { flex: none; width: 56px; color: var(--accent); font-weight: 700; }
+
+/* 每日任務 */
+.ms-bonus:disabled { filter: none; opacity: 1; background: #f1eefb; color: #a39cc4; box-shadow: 0 4px 0 #e2ddf3; font-size: 18px; }
+.ms-name { line-height: 1.3; }
+.ms-btn { min-width: 64px; }
+.ms-btn:disabled { background: transparent; color: var(--ink-soft); box-shadow: inset 0 0 0 2px #dcd5f5; opacity: 1; font-size: 13px; }
+.mission.got .ms-btn:disabled { color: #15803d; box-shadow: inset 0 0 0 2px #86efac; }
+.ms-bonus small { display: inline-flex; align-items: center; gap: 3px; vertical-align: 1px; }
+.missions { margin-bottom: 12px; }
+
+/* 寶箱獎勵清單 */
+.chest-list div { display: flex; align-items: center; gap: 8px; padding: 8px 12px; }
+.chest-list b { flex: none; padding: 1px 8px; border-radius: 999px; background: #fff4cc; text-align: center; min-width: 54px; font-size: 13px; }
+.chest-list div.ok { box-shadow: inset 0 0 0 2px var(--gold); }
+
+/* 轉移存檔 */
+.save-code { background: #fafafe; margin-bottom: 10px; }
+.save-code:focus { outline: none; border-color: #c4b5fd; }
+
+/* ---------- 主選單：四格功能磚＋寶箱進度 ---------- */
+.menu-bottom { gap: 12px; }
+.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.tile { position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 10px 2px 9px; border-radius: 20px; background: #fff; box-shadow: 0 5px 0 #d6cff0, 0 10px 18px rgba(43, 35, 80, 0.18); transition: transform 0.1s, box-shadow 0.1s; }
+.tile:active { transform: translateY(4px); box-shadow: 0 1px 0 #d6cff0, 0 4px 8px rgba(43, 35, 80, 0.18); }
+.t-ic { width: 42px; height: 42px; border-radius: 14px; display: grid; place-items: center; font-size: 23px; line-height: 1; }
+.t-daily .t-ic { background: linear-gradient(180deg, #dbeafe, #bfdbfe); }
+.t-shop .t-ic { background: linear-gradient(180deg, #fce7f3, #fbcfe8); }
+.t-dex .t-ic { background: linear-gradient(180deg, #dcfce7, #bbf7d0); }
+.t-mission .t-ic { background: linear-gradient(180deg, #ffedd5, #fed7aa); }
+.t-lb { font-size: 13px; font-weight: 700; color: var(--ink); white-space: nowrap; }
+.tile.done .t-lb { color: #15803d; }
+.t-ok { position: absolute; top: -5px; right: -5px; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-size: 12px; font-weight: 700; color: #fff; background: var(--good); border: 2px solid #fff; }
+.chest-bar { width: 100%; flex: none; padding: 8px 14px 8px 10px; gap: 10px; border-radius: 20px; background: linear-gradient(180deg, #fff8dc, #ffefb0); }
+.chest-ico { width: 40px; height: 40px; display: grid; place-items: center; font-size: 28px; }
+.chest-head { display: flex; justify-content: space-between; align-items: baseline; }
+.chest-name { font-size: 15px; font-weight: 700; color: #7a4a00; }
+.chest-info b { font-size: 14px; color: #a16207; font-variant-numeric: tabular-nums; }
+.chest-track { height: 10px; background: rgba(160, 98, 7, 0.16); }
+@media (max-height: 700px) {
+  .logo h1 { font-size: clamp(48px, 15vw, 72px); }
+  .menu-bottom { gap: 10px; }
+  .tile { padding: 7px 2px 6px; }
+  .t-ic { width: 36px; height: 36px; font-size: 20px; }
+  .level-grid { max-height: 120px; }
+  .big-btn.green { padding: 13px 20px; }
+}

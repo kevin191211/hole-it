@@ -2154,19 +2154,20 @@
     showModal(`
       <div class="m-kicker">${lvLabel()}</div>
       <h2>${G.L.name}</h2>
-      ${G.L.tip ? `<div class="m-tip">${G.L.tip}</div>` : ''}
-      <div class="m-sec">任務：${G.L.ordered ? '依序吃掉' : '吃掉'}</div>
+      <div class="m-time">⏱ 限時 <b>${Math.floor(G.L.time / 60)}:${String(G.L.time % 60).padStart(2, '0')}</b></div>
+      ${G.L.tip ? `<div class="m-tip">💡 ${G.L.tip}</div>` : ''}
+      <div class="m-sec">${G.L.ordered ? '依序吃掉' : '要吃掉'}</div>
       <div class="m-items">${itemCards(G.goals)}</div>
-      ${G.avoid.length ? `<div class="m-sec bad">吃到會扣時間</div><div class="m-items">${itemCards(G.avoid, true)}</div>` : ''}
-      ${(G.newBoost || []).map((k) => `<div class="m-tip">新道具解鎖：${boostLine(k)}<br>送你 1 個，遊戲中點右下角使用</div>`).join('')}
-      <div class="m-time">⏱ 限時 ${Math.floor(G.L.time / 60)}:${String(G.L.time % 60).padStart(2, '0')}</div>
+      ${G.avoid.length ? `<div class="m-sec bad">別吃！吃到會扣時間</div><div class="m-items">${itemCards(G.avoid, true)}</div>` : ''}
+      ${(G.newBoost || []).map((k) => `<div class="m-new"><i>${BOOST[k].icon}</i><div><b>新道具解鎖：${BOOST[k].name}</b>
+        <span>${BOOST[k].desc}（${BOOST[k].dur} 秒）</span><small>🎁 送你 1 個，遊戲中點下方道具使用</small></div></div>`).join('')}
       <div class="m-sec">開局加成（只限這一局）</div>
       <div class="pre-row">${Object.keys(PRE).map((k) => {
         const c = PRE[k], off = !preOk(k);
         return `<button class="pre${off ? ' off' : ''}" data-act="pre" data-pre="${k}"><i>${c.icon}</i><span>${c.name}</span>
           <small>${off ? '本關不適用' : `<i class="coin"></i>${c.cost}`}</small></button>`;
       }).join('')}</div>
-      <button class="big-btn" data-act="begin" id="btnBegin">開始！</button>`);
+      <div class="m-dock"><button class="big-btn" data-act="begin" id="btnBegin">開始！</button></div>`);
   }
   // 開局大一級：這關的黑洞上限比 2 級還小就不能用
   const preOk = (k) => k !== 'size' || radiusOf(2) <= (G.L.maxR || G.half * 0.3);
@@ -2194,28 +2195,35 @@
 
   function pauseModal() {
     showModal(`
+      <div class="m-kicker">${lvLabel()}</div>
       <h2>暫停</h2>
-      <div class="m-items">${G.goals.map((g) => `<div class="m-item"><img src="${g.img}" alt=""><b>${g.got}/${g.need}</b><span>${g.label}</span></div>`).join('')}</div>
+      <div class="progress-list">${G.goals.map((g) => `<div${g.got >= g.need ? ' class="ok"' : ''}><img src="${g.img}" alt="">${g.got}/${g.need}</div>`).join('')}</div>
       <div class="m-btns">
         <button class="big-btn" data-act="resume">繼續遊戲</button>
         <div class="m-row">
           <button class="big-btn ghost" data-act="retry">重新開始</button>
           <button class="big-btn ghost" data-act="menu">主選單</button>
         </div>
-        <button class="big-btn ghost" data-act="sound">${save.muted ? '🔇 音效：關' : '🔊 音效：開'}</button>
-        <div class="m-sec">道具說明（長按道具也看得到）</div>
-        <div class="boost-help">${Object.keys(BOOST).map((k) => `<div${G.n < BOOST[k].unlock ? ' class="off"' : ''}>${boostLine(k)}${G.n < BOOST[k].unlock ? `・第 ${BOOST[k].unlock} 關解鎖` : ''}</div>`).join('')}</div>
-        <div class="m-sec">操控方式</div>
-        <div class="seg">${Object.keys(CTRL_ZH).map((k) => `<button class="${save.ctrl === k ? 'on' : ''}" data-act="ctrl" data-ctrl="${k}">${CTRL_ZH[k]}</button>`).join('')}</div>
-        <div class="m-sec">移動速度 <b id="speedVal">×${speedMul().toFixed(2)}</b></div>
+      </div>
+      <div class="m-sec">設定</div>
+      <div class="set-box">
+        <div class="set-row"><span>音效</span><button class="switch${save.muted ? '' : ' on'}" data-act="sound" aria-label="音效"><i></i></button></div>
+        <div class="set-row"><span>操控方式</span><div class="seg mini">${Object.keys(CTRL_ZH).map((k) => `<button class="${save.ctrl === k ? 'on' : ''}" data-act="ctrl" data-ctrl="${k}">${CTRL_ZH[k]}</button>`).join('')}</div></div>
+        <div class="set-row"><span>移動速度</span><b id="speedVal">×${speedMul().toFixed(2)}</b></div>
         <div class="speed-row">
           <button class="speed-btn" data-act="speedStep" data-d="-0.05">－</button>
           <input type="range" id="speedRange" min="0.5" max="2" step="0.05" value="${speedMul()}">
           <button class="speed-btn" data-act="speedStep" data-d="0.05">＋</button>
         </div>
         <div class="m-note">跟原版比較後，把感覺一樣的數字告訴我</div>
-        <div class="m-note">版本 ${VERSION}・${BUILD}</div>
-      </div>`);
+      </div>
+      <div class="m-sec">道具說明</div>
+      <div class="boost-help">${Object.keys(BOOST).map((k) => {
+        const off = G.n < BOOST[k].unlock;
+        return `<div class="bh${off ? ' off' : ''}"><i>${BOOST[k].icon}</i><div><b>${BOOST[k].name}${off ? `<em>第 ${BOOST[k].unlock} 關解鎖</em>` : `<em class="dur">${BOOST[k].dur} 秒</em>`}</b><span>${BOOST[k].desc}</span></div></div>`;
+      }).join('')}</div>
+      <div class="m-note">遊戲中長按道具也看得到說明</div>
+      <div class="m-note m-ver">版本 ${VERSION}・${BUILD}</div>`);
   }
 
   function pause() {
@@ -2356,7 +2364,7 @@
     el.classList.add('nope');
   }
   function priceTag(own, on, item) {
-    return on ? '使用中' : own ? '使用' : item.chest ? '🔒 星星寶箱限定' : item.gacha ? '扭蛋限定' : `<i class="coin"></i>${item.price}`;
+    return on ? '使用中' : own ? '使用' : item.chest ? '🔒 寶箱限定' : item.gacha ? '扭蛋限定' : `<i class="coin"></i>${item.price}`;
   }
   function shopModal(tab) {
     shopTab = tab || shopTab;
@@ -2385,8 +2393,11 @@
         <div class="gacha-out" id="gachaOut">抽金幣、道具，還有扭蛋限定的外框和特效！</div>
       </div>
       <button class="big-btn purple" data-act="gacha" ${gachaBusy ? 'disabled' : ''}>轉一次 <small><i class="coin"></i>${GACHA_COST}</small></button>
-      <div class="m-note">機率：金幣 42%・道具 40%・限定外框 12%・限定特效 6%</div>
-      <div class="m-note">限定外框：${SKINS.filter((k) => k.gacha).map((k) => k.name).join('、')}｜限定特效：${EAT_FX.filter((k) => k.gacha).map((k) => k.name).join('、')}</div>`;
+      <div class="gacha-info">
+        <div><b>機率</b><span>金幣 42%・道具 40%・限定外框 12%・限定特效 6%</span></div>
+        <div><b>限定外框</b><span>${SKINS.filter((k) => k.gacha).map((k) => k.name).join('、')}</span></div>
+        <div><b>限定特效</b><span>${EAT_FX.filter((k) => k.gacha).map((k) => k.name).join('、')}</span></div>
+      </div>`;
     }
     showModal(`
       <h2>商店</h2>
@@ -2459,19 +2470,18 @@
     vibrate(200);
     const can = save.coins >= CONTINUE_COST;
     showModal(`
+      <div class="lose-ic">⏰</div>
       <div class="m-kicker">${lvLabel()}</div>
       <h2>挑戰失敗！</h2>
-      <div class="m-note">時間到了</div>
-      <div class="m-note">本局 ${G.score} 分</div>
-      <div class="progress-list">${G.goals.map((g) => `<div><img src="${g.img}" alt="">${g.got}/${g.need}</div>`).join('')}</div>
-      <div class="coin-pill shop-coins lose-coins"><i class="coin"></i><span>${save.coins}</span></div>
-      ${can ? '' : `<div class="m-note">金幣不足 ${CONTINUE_COST}，無法繼續</div>`}
+      <div class="m-note">時間到了・本局 <b>${G.score}</b> 分</div>
+      <div class="progress-list">${G.goals.map((g) => `<div${g.got >= g.need ? ' class="ok"' : ''}><img src="${g.img}" alt="">${g.got}/${g.need}</div>`).join('')}</div>
       <div class="m-btns">
         <button class="big-btn" data-act="retry">再試一次</button>
         <div class="m-row">
-          <button class="big-btn ghost" data-act="continue" ${can ? '' : 'disabled'}>+30 秒繼續 <small><i class="coin"></i>${CONTINUE_COST}</small></button>
+          <button class="big-btn ghost cont-btn" data-act="continue" ${can ? '' : 'disabled'}>+30 秒繼續<span class="price"><i class="coin"></i>${CONTINUE_COST}</span></button>
           <button class="big-btn ghost" data-act="menu">主選單</button>
         </div>
+        <div class="m-note">${can ? `目前有 <i class="coin"></i> <b>${save.coins}</b> 金幣` : `金幣不足 ${CONTINUE_COST}，無法繼續（目前 <i class="coin"></i> ${save.coins}）`}</div>
       </div>`);
   }
 
@@ -2566,7 +2576,7 @@
       A.setMuted(save.muted);
       persist();
       updateSoundBtn();
-      btn.textContent = save.muted ? '🔇 音效：關' : '🔊 音效：開';
+      btn.classList.toggle('on', !save.muted);
     },
   };
 
@@ -2644,7 +2654,10 @@
     $('hudCoins').textContent = save.coins;
     stopFever();
     updateMenuBadges();
-    $('btnDaily').textContent = save.daily && save.daily[todayKey()] ? '📅 今日已完成 ✓' : '📅 每日挑戰';
+    const dailyDone = !!(save.daily && save.daily[todayKey()]);
+    $('dailyLabel').textContent = dailyDone ? '今日已完成' : '每日挑戰';
+    $('dailyOk').classList.toggle('hidden', !dailyDone);
+    $('btnDaily').classList.toggle('done', dailyDone);
     renderLevelGrid();
     updateSoundBtn();
     $('menu').classList.remove('hidden');
@@ -2779,13 +2792,13 @@
         <div class="ms-top"><span class="ms-name">${MISSION_DEFS[x.type].label(x.target)}</span><span class="ms-rw"><i class="coin"></i>${missionReward(x)}</span></div>
         <div class="ms-row">
           <div class="ms-bar"><i style="width:${(p / x.target) * 100}%"></i><b>${p}/${x.target}</b></div>
-          <button class="ms-btn" data-act="mclaim" data-i="${i}" ${done && !got ? '' : 'disabled'}>${got ? '已領取' : done ? '領取' : '進行中'}</button>
+          <button class="ms-btn" data-act="mclaim" data-i="${i}" ${done && !got ? '' : 'disabled'}>${got ? '✓ 已領' : done ? '領取' : '進行中'}</button>
         </div></div>`;
     }).join('');
     showModal(`
       <h2>每日任務</h2>
       <div class="coin-pill shop-coins"><i class="coin"></i><span>${save.coins}</span></div>
-      <div class="m-note">每天 3 個任務，主線關卡和每日挑戰都計入，明天會換新的</div>
+      <div class="m-note">每天 3 個任務・主線和每日挑戰都算・明天換新</div>
       <div class="missions">${rows}</div>
       <button class="big-btn purple ms-bonus" data-act="mbonus" ${all && !m.bonusClaimed ? '' : 'disabled'}>${m.bonusClaimed ? '全部完成獎勵已領取' : `全部完成獎勵 <small><i class="coin"></i>${MISSION_BONUS}</small>`}</button>
       <div class="m-btns"><button class="big-btn" data-act="close">關閉</button></div>`);
