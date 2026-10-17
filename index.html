@@ -41,6 +41,7 @@
     </div>
     <div id="feverGlow"></div>
     <div class="fever-banner hidden" id="feverBanner"><b>🔥 狂熱！</b><div class="fever-track"><div id="feverBar"></div></div></div>
+    <div class="challenge-tag hidden" id="hudChallenge"></div>
     <div class="goals" id="hudGoals"></div>
     <div class="fx-bar" id="fxBar"></div>
     <div class="size-label hidden" id="sizeLabel">等級 1</div>
@@ -81,11 +82,13 @@
     </div>
     <div class="menu-bottom">
       <button class="big-btn green" id="btnPlay">開始 第 <span id="menuLevel">1</span> 關</button>
+      <button class="event-btn hidden" id="btnEvent">🎃 萬聖節活動 🦇</button>
       <div class="tiles">
         <button class="tile t-daily" id="btnDaily"><span class="t-ic">📅</span><span class="t-lb" id="dailyLabel">每日挑戰</span><i class="t-ok hidden" id="dailyOk">✓</i></button>
         <button class="tile t-shop" id="btnSkins"><span class="t-ic">🛍️</span><span class="t-lb">商店</span></button>
         <button class="tile t-dex" id="btnDex"><span class="t-ic">📖</span><span class="t-lb">圖鑑</span></button>
         <button class="tile t-mission" id="btnMissions"><span class="t-ic">📋</span><span class="t-lb">每日任務</span><i class="dot hidden" id="missionDot"></i></button>
+        <button class="tile t-checkin" id="btnCheckin"><span class="t-ic">📆</span><span class="t-lb">簽到</span><i class="dot hidden" id="checkinDot"></i></button>
       </div>
       <button class="chest-bar" id="btnChest" aria-label="星星寶箱">
         <span class="chest-ico">🎁</span>
