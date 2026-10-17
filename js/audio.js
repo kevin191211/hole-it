@@ -101,7 +101,10 @@
     },
   };
   const BARS = 8, STEPS = 16;
-  const MUSIC_VOL = 0.14; // 背景音樂總音量：要比音效小，才不會蓋過吞東西的聲音
+  // 背景音樂音量：玩家滑桿 0～1，預設 0.5（＝0.14，比音效小，不會蓋過吞東西的聲音）
+  const MUSIC_MAX = 0.28;
+  let musicLevel = 0.5;
+  const musicVol = () => MUSIC_MAX * musicLevel;
 
   function rng(seed) {
     let a = seed >>> 0;
@@ -162,7 +165,7 @@
     mus.filt.type = 'lowpass';
     mus.filt.frequency.value = tr.cutoff;
     mus.duck = ctx.createGain();
-    mus.duck.gain.value = MUSIC_VOL;
+    mus.duck.gain.value = musicVol();
     mus.bus.connect(mus.filt);
     mus.filt.connect(mus.duck);
     mus.duck.connect(ctx.destination);
@@ -233,6 +236,14 @@
       mus.id = id;
       if (id !== 'off' && ctx) musicStart();
     },
+    setMusicVol(v) {
+      musicLevel = Math.max(0, Math.min(1, +v || 0));
+      if (!ctx || !mus.duck) return;
+      const g = mus.duck.gain, t = ctx.currentTime;
+      g.cancelScheduledValues(t);
+      g.setValueAtTime(g.value, t);
+      g.linearRampToValueAtTime(musicVol(), t + 0.08);
+    },
     // 最後 10 秒：鼓點加密、速度加快
     musicMood(m) { mus.mood = m || ''; },
     // 過關／失敗：音樂先壓低，讓結算音效聽得清楚，幾秒後回來
@@ -241,9 +252,9 @@
       const g = mus.duck.gain, t = ctx.currentTime;
       g.cancelScheduledValues(t);
       g.setValueAtTime(g.value, t);
-      g.linearRampToValueAtTime(MUSIC_VOL * 0.2, t + 0.25);
-      g.setValueAtTime(MUSIC_VOL * 0.2, t + (sec || 3.5));
-      g.linearRampToValueAtTime(MUSIC_VOL, t + (sec || 3.5) + 1.5);
+      g.linearRampToValueAtTime(musicVol() * 0.2, t + 0.25);
+      g.setValueAtTime(musicVol() * 0.2, t + (sec || 3.5));
+      g.linearRampToValueAtTime(musicVol(), t + (sec || 3.5) + 1.5);
     },
     // ---------- 音效 ----------
     // big：吞下的東西跟黑洞比有多大（0～1），越大越低沉、多一聲悶響
