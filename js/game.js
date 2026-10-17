@@ -56,7 +56,7 @@
   ];
   // 吞噬特效：東西掉進洞時噴出的粒子（tile＝粒子貼圖格子：0 星 1 愛心 2 泡泡 3 方塊 4 光點 5 雪花 6 金幣 7 流星）
   const EAT_FX = [
-    { id: 'none', name: '無特效', price: 0 },
+    { id: 'none', name: '基本', price: 0 },
     { id: 'star', name: '星星', price: 300, tile: 0, colors: [0xffd54f, 0xfff59d, 0xffb300] },
     { id: 'heart', name: '愛心', price: 300, tile: 1, colors: [0xff4f9a, 0xff80ab, 0xe91e63] },
     { id: 'bubble', name: '泡泡', price: 400, tile: 2, colors: [0xb3e5fc, 0xe1f5fe, 0x80deea] },
@@ -262,7 +262,34 @@
   timeArc.position.y = 0.025;
   timeArc.material.depthTest = false;
   timeArc.renderOrder = 6;
-  rimGroup.add(rim, ringTrack, ringArc, levelFx, timeTrack, timeArc);
+  // 防護罩：洞口外圍一圈往上淡出的半透明光牆，貼圖有直條紋，轉動時會閃
+  const shield = (() => {
+    const c = document.createElement('canvas');
+    c.width = 128;
+    c.height = 64;
+    const x = c.getContext('2d');
+    x.fillStyle = '#999';
+    x.fillRect(0, 0, 128, 64);
+    x.fillStyle = '#fff';
+    for (let i = 0; i < 12; i++) x.fillRect(i * 128 / 12, 0, 3, 64);
+    x.globalCompositeOperation = 'multiply';
+    const g = x.createLinearGradient(0, 0, 0, 64);
+    g.addColorStop(0, '#000');
+    g.addColorStop(0.75, '#bbb');
+    g.addColorStop(1, '#fff');
+    x.fillStyle = g;
+    x.fillRect(0, 0, 128, 64);
+    const tex = new T.CanvasTexture(c);
+    tex.wrapS = T.RepeatWrapping;
+    const m = new T.Mesh(
+      new T.CylinderGeometry(1.62, 1.62, 1.1, 56, 1, true).translate(0, 0.55, 0),
+      new T.MeshBasicMaterial({ color: 0x4fd2ff, alphaMap: tex, transparent: true, opacity: 0.6, depthWrite: false, side: T.DoubleSide })
+    );
+    m.renderOrder = 8;
+    m.visible = false;
+    return m;
+  })();
+  rimGroup.add(rim, ringTrack, ringArc, levelFx, timeTrack, timeArc, shield);
   let timeShown = -1;
   function setTimeRing(f) {
     const q = Math.round(Math.max(0, Math.min(1, f)) * 200) / 200;
@@ -452,11 +479,33 @@
   let fxNext = 0, fxAlive = 0;
   const _fc = new T.Color();
 
+  // 單顆粒子（拖尾、護罩碎片、預設碎屑共用）
+  function fxSpawn(x, y, z, vx, vy, vz, g, drag, max, s, col, tile) {
+    const j = fxNext, p = fxP[j];
+    fxNext = (fxNext + 1) % FX_N;
+    p.x = x; p.y = y; p.z = z; p.vx = vx; p.vy = vy; p.vz = vz;
+    p.g = g; p.drag = drag; p.max = p.life = max; p.s = s;
+    _fc.set(col);
+    fxCol[j * 4] = _fc.r; fxCol[j * 4 + 1] = _fc.g; fxCol[j * 4 + 2] = _fc.b;
+    fxTile[j] = tile;
+    fxAlive = FX_N;
+  }
+  // 沒買特效時的基本碎屑：少量小方塊往外彈
+  const BASIC_COLS = [0xffffff, 0xfff1c1, 0xd8ceff];
+  function basicFx(e, k) {
+    const n = Math.min(7, 2 + Math.round(e.r * 2));
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * PI * 2, c = Math.cos(a), s = Math.sin(a), out = (1.5 + Math.random() * 2) * k;
+      fxSpawn(e.pos.x + c * e.r * 0.4, 0.3 * k, e.pos.z + s * e.r * 0.4, c * out, (3 + Math.random() * 3) * k, s * out,
+        16 * k, 0, 0.55, (0.14 + Math.random() * 0.1) * k, BASIC_COLS[i % 3], 3);
+    }
+  }
+
   // 東西掉進洞的瞬間噴一把粒子；數量看東西大小，鏡頭越高粒子越大
   function eatFx(e) {
     const f = fxOf(save.fx);
-    if (!f.colors) return;
     const k = (7 + hole.vis * 5.5) / 12.5;
+    if (!f.colors) return basicFx(e, k);
     const n = Math.min(14, 3 + Math.round(e.r * 4));
     const burst = f.colors[Math.floor(Math.random() * f.colors.length)]; // 煙火：一發一個主色
     const rnd = (a, b) => a + Math.random() * (b - a);
@@ -734,6 +783,8 @@
       return { x, z, r, speed, mesh: m, a: 0, c: 1, s: 0 };
     });
     G.edge = 1e9;
+    G.shrinkK = 0;
+    G.feverTotal = 0;
     G.barriers = [];
     if (L.shrink) {
       const mat = new T.MeshPhongMaterial({ color: 0xef4444, emissive: 0x7f1d1d, flatShading: true });
@@ -820,6 +871,7 @@
     stopFever();
     G.lastEat = -9;
     G.slow = 0;
+    G.hitstop = 0;
     G.falling = 0;
     G.overtime = 0;
     G.lateEats = [];
@@ -841,7 +893,10 @@
   function frame() {
     requestAnimationFrame(frame);
     let dt = Math.min(clock.getDelta(), 0.05);
-    if (G.slow > 0) {
+    if (G.hitstop > 0) { // 頓幀：重擊瞬間畫面幾乎停住
+      G.hitstop -= dt;
+      dt *= 0.04;
+    } else if (G.slow > 0) {
       G.slow -= dt;
       dt *= 0.3;
     }
@@ -1062,7 +1117,7 @@
     }
     if (G.L.shrink) {
       const S = G.L.shrink, f = 1 - G.time / G.total;
-      const k = Math.max(0, Math.min(1, (f - S.t0) / (S.t1 - S.t0)));
+      const k = G.shrinkK = Math.max(G.shrinkK || 0, Math.min(1, (f - S.t0) / (S.t1 - S.t0)));
       G.edge = G.half * (1 - (1 - S.to) * k);
       const e = G.edge, len = e * 2 + 0.6;
       [[0, -e - 0.25, len, 0.5], [0, e + 0.25, len, 0.5], [-e - 0.25, 0, 0.5, len], [e + 0.25, 0, 0.5, len]].forEach(([x, z, w, d], i) => {
@@ -1139,6 +1194,8 @@
     const showTime = G.state === 'playing' || G.state === 'paused' || G.state === 'intro';
     timeTrack.visible = timeArc.visible = showTime;
     if (showTime) setTimeRing(G.total ? G.time / G.total : 1);
+    updateShield(dt);
+    updateTrail(dt);
     if (fxT > 0) {
       fxT = Math.max(0, fxT - dt);
       const k = 1 - fxT / 0.7;
@@ -1167,6 +1224,53 @@
     } else tl.classList.add('hidden');
   }
 
+  // ---------- 防護罩、加速鞋拖尾 ----------
+  let shieldHitT = 0, shieldWas = 0, trailT = 0;
+  const lastHP = { x: 0, z: 0 };
+  const fxK = () => (7 + hole.vis * 5.5) / 12.5;
+  function shieldShards(n, up) {
+    const k = fxK(), R = hole.vis * 1.62;
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * PI * 2, c = Math.cos(a), s = Math.sin(a), out = (1.5 + Math.random() * 3) * k;
+      fxSpawn(hole.pos.x + c * R, Math.random() * hole.vis * 0.9, hole.pos.z + s * R, c * out, (up + Math.random() * 3) * k, s * out,
+        12 * k, 0.5, 0.7, (0.2 + Math.random() * 0.15) * k, i % 3 ? 0x8ae9ff : 0xffffff, 3);
+    }
+  }
+  function shieldHit() {
+    shieldHitT = 0.35;
+    G.hitstop = Math.max(G.hitstop || 0, 0.08);
+    shieldShards(10, 2);
+  }
+  function updateShield(dt) {
+    const left = G.boosts.shield || 0;
+    // 時間到：護罩碎裂
+    if (shieldWas > 0 && !left && G.state === 'playing') shieldShards(26, 3);
+    shieldWas = left;
+    shield.visible = left > 0 && (left > 1.5 || Math.sin(G.t * 22) > 0); // 最後 1.5 秒閃爍
+    if (!shield.visible) return;
+    shieldHitT = Math.max(0, shieldHitT - dt);
+    shield.rotation.y += dt * 0.9;
+    shield.material.opacity = Math.min(1, 0.6 + 0.12 * Math.sin(G.t * 6) + shieldHitT * 1.4);
+    const sc = 1 + shieldHitT * 0.25;
+    shield.scale.set(sc, 1, sc);
+  }
+  function updateTrail(dt) {
+    const mx = hole.pos.x - lastHP.x, mz = hole.pos.z - lastHP.z, d = Math.hypot(mx, mz);
+    lastHP.x = hole.pos.x;
+    lastHP.z = hole.pos.z;
+    if (!(G.boosts.shoes > 0) || G.state !== 'playing' || d < 1e-4 || d / Math.max(dt, 1e-4) < 0.8) return;
+    trailT -= dt;
+    if (trailT > 0) return;
+    trailT = 0.03;
+    const k = fxK(), bx = -mx / d, bz = -mz / d;
+    for (let i = 0; i < 2; i++) {
+      const a = (Math.random() - 0.5) * 1.6, c = Math.cos(a), s = Math.sin(a);
+      const ux = bx * c - bz * s, uz = bx * s + bz * c, R = hole.vis * (1.1 + Math.random() * 0.15);
+      fxSpawn(hole.pos.x + ux * R, 0.15 * k, hole.pos.z + uz * R, ux * 0.6 * k, 0.8 * k, uz * 0.6 * k,
+        -0.5 * k, 1.5, 0.45, (0.3 + Math.random() * 0.15) * k, i ? 0x7ff3ff : 0xffffff, 4);
+    }
+  }
+
   // ---------- 黑洞等級（Size）：吃東西累積面積，滿了就升一級，半徑跳大一階 ----------
   function radiusOf(n) {
     return G.L.holeR * (1 + SIZE_STEP * (n - 1));
@@ -1184,6 +1288,10 @@
       fxT = 0.7;
       A.levelUp();
       vibrate(25);
+      if (G.state === 'playing') {
+        G.hitstop = Math.max(G.hitstop || 0, 0.06);
+        popup('等級 ' + hole.size + '！', 'level', 70);
+      }
     }
     hole.r = radiusOf(hole.size);
     hole.prog = radiusOf(hole.size + 1) > maxR ? 1 : Math.max(0, Math.min(1, hole.xp / xpNeed(hole.size)));
@@ -1350,7 +1458,8 @@
     const tk = Math.min(1, e.tilt / 1.5);
     const ext = long ? e.r * (1 - 0.75 * tk) + e.def.w * e.base * tk : e.r * 0.85;
     rx = p.x - hole.pos.x; rz = p.z - hole.pos.z; d = Math.hypot(rx, rz) || 1e-4;
-    const room = R - ext;
+    // 不是長條的東西吞進來時一定比洞窄；洞在掉落途中縮回（狂熱、變大藥水結束）也不能卡死
+    const room = long ? R - ext : Math.max(R - ext, 0.05);
     const hvx = G.hvx || 0, hvz = G.hvz || 0, hs = Math.hypot(hvx, hvz);
     if (room <= 0.02) {
       // 比洞口還寬：卡在洞口，跟著洞被拖著走，等轉到立起來才掉下去
@@ -1565,6 +1674,7 @@
       if (G.L.boss === e.kind && e.base > 1) {
         popup('打倒頭目！', 'combo', 60);
         G.shake = 0.9;
+        G.hitstop = 0.14;
         vibrate([40, 30, 80]);
       }
       if (G.L.ordered) G.goals.forEach((x, i) => updateLock(i));
@@ -1573,7 +1683,10 @@
       return;
     }
     if (G.avoid.some((a) => match(e, a))) {
-      if (G.boosts.shield > 0) popup('🛡️ 擋住了！', 'good'); // 防護罩：不扣時間
+      if (G.boosts.shield > 0) { // 防護罩：不扣時間
+        popup('🛡️ 擋住了！', 'good');
+        shieldHit();
+      }
       else penalty(e);
       return;
     }
@@ -1586,8 +1699,9 @@
   // ---------- 狂熱模式 ----------
   function feverEat() {
     if (G.fever > 0) {
-      if (G.feverCoins < FEVER_COIN_MAX) {
+      if ((G.feverTotal || 0) < FEVER_COIN_MAX) {
         G.feverCoins++;
+        G.feverTotal = (G.feverTotal || 0) + 1;
         setCoins(save.coins + 1, true);
         popup('+1 🪙', 'combo', 14);
       }
@@ -1714,6 +1828,7 @@
     }
     popup('-' + sec + ' 秒', 'bad');
     G.shake = bomb ? 0.7 : 0.4;
+    G.hitstop = bomb ? 0.12 : 0.06;
     flash();
     bumpTimer('bump-bad');
     vibrate([60, 40, 60]);
@@ -1818,6 +1933,49 @@
     f.classList.add('on');
   }
 
+  // 過關彩帶：蓋在結算視窗上面
+  let cfBox = null;
+  function cfLayer() {
+    if (!cfBox) {
+      cfBox = document.createElement('div');
+      cfBox.id = 'confetti';
+      document.body.appendChild(cfBox);
+    }
+    return cfBox;
+  }
+  const CF_COLS = ['#ffd23f', '#ff5c8a', '#4dd4ff', '#7ee05a', '#b18cff', '#ff9a3d'];
+  function confetti(n) {
+    const box = cfLayer();
+    for (let i = 0; i < n; i++) {
+      const el = document.createElement('i');
+      el.className = 'cf';
+      const w = 6 + Math.random() * 6;
+      el.style.cssText = `left:${Math.random() * 100}%;width:${w}px;height:${w * (1.3 + Math.random() * 0.8)}px;background:${CF_COLS[i % CF_COLS.length]};`
+        + `--dx:${(Math.random() - 0.5) * 160}px;--r:${(Math.random() < 0.5 ? -1 : 1) * (360 + Math.random() * 720)}deg;`
+        + `animation-duration:${1.8 + Math.random() * 1.4}s;animation-delay:${Math.random() * 0.5}s;${Math.random() < 0.3 ? 'border-radius:50%;' : ''}`;
+      el.addEventListener('animationend', () => el.remove());
+      box.appendChild(el);
+    }
+  }
+  // 結算星星彈出時各炸一圈小光點（時間對齊 CSS starIn 的延遲）
+  function starBurst() {
+    document.querySelectorAll('.stars svg.on').forEach((sv, i) => {
+      setTimeout(() => {
+        if (!document.body.contains(sv)) return;
+        const r = sv.getBoundingClientRect(), box = cfLayer();
+        for (let j = 0; j < 10; j++) {
+          const a = (j / 10) * PI * 2 + Math.random() * 0.4, d = 45 + Math.random() * 30;
+          const el = document.createElement('i');
+          el.className = 'spark';
+          el.style.cssText = `left:${r.left + r.width / 2}px;top:${r.top + r.height / 2}px;--dx:${Math.cos(a) * d}px;--dy:${Math.sin(a) * d}px;`;
+          el.addEventListener('animationend', () => el.remove());
+          box.appendChild(el);
+        }
+        vibrate(12);
+      }, 330 + i * 180);
+    });
+  }
+
   function bumpTimer(cls) {
     const t = $('hudTimerWrap');
     t.classList.remove('bump-bad', 'bump-good');
@@ -1885,6 +2043,7 @@
   // ---------- 道具：到指定關卡解鎖並送 1 個；數量用完後點擊會用金幣購買 ----------
   function grantBoosters() {
     G.newBoost = [];
+    if (G.daily) return; // 每日挑戰的關卡編號是 999，不能拿來判斷解鎖
     for (const k in BOOST) {
       if (G.n >= BOOST[k].unlock && !save.granted[k]) {
         G.newBoost.push(k);
@@ -2093,9 +2252,11 @@
     const starGain = totalStars() - starsBefore, chestNew = chestReady() - readyBefore;
     save.unlocked = Math.max(save.unlocked, G.n + 1);
     save.level = G.n + 1;
+    save.coins += reward; // 獎勵跟著過關一起存檔，動畫只負責顯示
     persist();
     A.win();
     banner('完成！');
+    confetti(stars >= 3 ? 90 : 60);
     vibrate([30, 50, 30]);
     setTimeout(() => {
       if (G.state !== 'won') return;
@@ -2116,7 +2277,8 @@
             <button class="big-btn ghost" data-act="menu">主選單</button>
           </div>
         </div>`);
-      setTimeout(() => { setCoins(save.coins + reward, true); A.coin(); }, 700);
+      starBurst();
+      setTimeout(() => { setCoins(save.coins, true); A.coin(); }, 700);
     }, 1100);
   }
 
@@ -2127,11 +2289,13 @@
     save.daily = save.daily || {};
     const first = !save.daily[G.daily];
     save.daily[G.daily] = Math.max(save.daily[G.daily] || 0, stars);
+    const reward = 20 + stars * 15 + (first ? 100 : 0);
+    save.coins += reward;
     persist();
     missionBump('daily', 1);
-    const reward = 20 + stars * 15 + (first ? 100 : 0);
     A.win();
     banner('完成！');
+    confetti(stars >= 3 ? 90 : 60);
     vibrate([30, 50, 30]);
     setTimeout(() => {
       if (G.state !== 'won') return;
@@ -2149,7 +2313,8 @@
             <button class="big-btn ghost" data-act="menu">主選單</button>
           </div>
         </div>`);
-      setTimeout(() => { setCoins(save.coins + reward, true); A.coin(); }, 700);
+      starBurst();
+      setTimeout(() => { setCoins(save.coins, true); A.coin(); }, 700);
     }, 1100);
   }
 
@@ -2718,7 +2883,12 @@
       setTimeout(() => {
         chestBusy = false;
         setCoins(save.coins, true);
-        if (!document.body.contains(ic)) return;
+        if (!document.body.contains(ic)) {
+          // 動畫中關掉又重開了寶箱彈窗：新彈窗是在開啟中畫的，按鈕停用，要重畫
+          updateMenuBadges();
+          if ($('chestBtn')) chestModal();
+          return;
+        }
         ic.className = 'chest-ic opened';
         ic.textContent = '✨';
         out.innerHTML = prize.html;
@@ -2811,7 +2981,7 @@
     history.replaceState(null, '', location.pathname + location.search);
     if (data) {
       const fresh = save.unlocked <= 1 && !Object.keys(save.stars || {}).length;
-      if (fresh || data.unlocked >= save.unlocked) {
+      if (fresh || data.unlocked > save.unlocked) {
         applySave(data);
         importDone();
       } else confirmImport(data);
