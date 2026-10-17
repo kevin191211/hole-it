@@ -870,3 +870,65 @@ button {
 .banner.chest { font-size: clamp(36px, 11vw, 60px); }
 .banner.chest.good { text-shadow: 0 5px 0 #1e8a4c, 0 12px 30px rgba(0, 0, 0, 0.35); }
 .banner.chest.bad { text-shadow: 0 5px 0 #b3263c, 0 12px 30px rgba(0, 0, 0, 0.35); }
+
+/* 狂熱模式 */
+#feverGlow { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.35s; box-shadow: inset 0 0 70px 14px rgba(255, 120, 20, 0.75), inset 0 0 160px 30px rgba(255, 60, 0, 0.35); }
+#feverGlow.on { opacity: 1; animation: feverGlow 0.5s ease-in-out infinite alternate; }
+@keyframes feverGlow { from { filter: brightness(0.85); } to { filter: brightness(1.25); } }
+.fever-banner { position: absolute; top: calc(var(--safe-t) + 142px); left: 50%; transform: translateX(-50%); width: 190px; text-align: center; pointer-events: none; }
+.fever-banner.hidden { display: none; }
+.fever-banner b { display: block; font-size: 30px; line-height: 1.1; color: #fff4c2; -webkit-text-stroke: 1.5px #b3260a; text-shadow: 0 3px 0 #b3260a, 0 0 18px rgba(255, 140, 0, 0.9); }
+.fever-banner.hit b { animation: feverHit 0.5s cubic-bezier(0.2, 1.6, 0.4, 1); }
+.fever-track { height: 9px; margin-top: 4px; border-radius: 6px; background: rgba(0, 0, 0, 0.4); overflow: hidden; border: 2px solid rgba(255, 255, 255, 0.85); }
+#feverBar { height: 100%; width: 100%; background: linear-gradient(90deg, #ffd23f, #ff6a1a); }
+@keyframes feverHit { 0% { transform: scale(0.3); } 100% { transform: scale(1); } }
+
+/* 每日任務 / 紅點 / 任務完成提示 */
+.menu-row .big-btn, .chest-bar { position: relative; }
+.dot { position: absolute; top: -5px; right: -5px; width: 17px; height: 17px; border-radius: 50%; background: #ff3b4e; border: 2px solid #fff; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3); animation: pulse 1s infinite; }
+.dot.hidden { display: none; }
+.toast { position: absolute; top: calc(var(--safe-t) + 118px); left: 50%; transform: translateX(-50%); max-width: 90vw; padding: 8px 16px; border-radius: 18px; background: rgba(43, 35, 80, 0.92); color: #fff; font-size: 16px; font-weight: 700; white-space: nowrap; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35); border: 2px solid var(--gold); animation: toastIn 2.6s ease-out forwards; }
+@keyframes toastIn { 0% { opacity: 0; transform: translate(-50%, -14px); } 10%, 80% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, -8px); } }
+.missions { display: flex; flex-direction: column; gap: 10px; margin: 10px 0 14px; text-align: left; }
+.mission { padding: 10px 12px; border-radius: 16px; background: #f5f2ff; border: 2px solid #e0d8fb; }
+.mission.done { background: #fff8e1; border-color: var(--gold); }
+.mission.got { opacity: 0.6; }
+.ms-top { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 16px; margin-bottom: 6px; }
+.ms-rw { display: inline-flex; align-items: center; gap: 4px; color: var(--gold-dark); }
+.ms-row { display: flex; align-items: center; gap: 8px; }
+.ms-bar { position: relative; flex: 1; height: 22px; border-radius: 11px; background: #dcd5f5; overflow: hidden; }
+.ms-bar i { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #7ee05a, #3fae2a); border-radius: 11px; }
+.ms-bar b { position: relative; display: block; text-align: center; font-size: 13px; line-height: 22px; color: var(--ink); }
+.ms-btn { flex: none; min-width: 68px; padding: 7px 10px; border-radius: 12px; border: 0; font: inherit; font-size: 15px; font-weight: 700; color: #fff; background: linear-gradient(180deg, #ffc83d, #ee9d00); box-shadow: 0 3px 0 #c77d00; cursor: pointer; }
+.ms-btn:disabled { background: #cfc9e6; box-shadow: none; color: #fff; opacity: 0.85; cursor: default; }
+.ms-bonus { margin-bottom: 12px; }
+.fly-coin { position: fixed; z-index: 60; font-size: 20px; pointer-events: none; }
+
+/* 星星寶箱 */
+.chest-bar { flex: 1.35; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 0; border-radius: 22px; background: #fff4cc; box-shadow: 0 5px 0 #e6cf80; font: inherit; color: var(--ink); cursor: pointer; }
+.chest-bar:active { transform: translateY(4px); box-shadow: 0 1px 0 #e6cf80; }
+.chest-ico { font-size: 28px; line-height: 1; }
+.chest-info { flex: 1; display: flex; flex-direction: column; gap: 4px; text-align: left; }
+.chest-info b { font-size: 15px; }
+.chest-track { display: block; height: 8px; border-radius: 5px; background: rgba(43, 35, 80, 0.18); overflow: hidden; }
+.chest-track i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #ffd23f, #ff9d00); border-radius: 5px; transition: width 0.4s; }
+.chest-bar.ready { animation: chestJump 0.9s ease-in-out infinite; box-shadow: 0 5px 0 #e6cf80, 0 0 18px 4px rgba(255, 200, 61, 0.9); }
+.chest-bar.ready .chest-ico { animation: chestJump 0.9s ease-in-out infinite; }
+@keyframes chestJump { 0%, 100% { transform: translateY(0) scale(1); } 40% { transform: translateY(-5px) scale(1.06); } 60% { transform: translateY(0) scale(0.97); } }
+.chest-stage { display: grid; place-items: center; height: 120px; margin: 4px 0 6px; }
+.chest-ic { font-size: 84px; line-height: 1; filter: drop-shadow(0 6px 6px rgba(43, 35, 80, 0.3)); }
+.chest-ic.ready { animation: chestJump 0.9s ease-in-out infinite; filter: drop-shadow(0 0 16px rgba(255, 200, 61, 0.95)); }
+.chest-ic.shaking { animation: chestShake 0.18s linear infinite; }
+.chest-ic.opened { animation: chestPop 0.5s cubic-bezier(0.2, 1.6, 0.4, 1); filter: drop-shadow(0 0 20px rgba(255, 200, 61, 1)); }
+@keyframes chestShake { 0%, 100% { transform: rotate(-10deg) scale(1.1); } 50% { transform: rotate(10deg) scale(1.2); } }
+@keyframes chestPop { 0% { transform: scale(0.3); } 100% { transform: scale(1); } }
+.chest-out { min-height: 46px; font-size: 18px; font-weight: 700; line-height: 1.4; }
+.chest-out .coin { font-size: 20px; }
+.chest-out small { display: block; font-size: 12px; font-weight: 600; color: var(--ink-soft); }
+.chest-list { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 14px; text-align: left; font-size: 14px; }
+.chest-list div { padding: 6px 10px; border-radius: 12px; background: #f5f2ff; }
+.chest-list div.ok { background: #fff8e1; }
+.chest-list b { display: inline-block; min-width: 62px; color: var(--gold-dark); }
+.chest-note { margin-top: 4px; }
+.skin.chestlock { background: linear-gradient(180deg, #fff8e1, #fff); border-style: dashed; border-color: #f5c451; }
+.skin.chestlock small { color: #b7791f; font-weight: 700; font-size: 11px; }
