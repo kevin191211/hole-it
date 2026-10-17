@@ -15,13 +15,69 @@
     else _s.set(scl[0], scl[1], scl[2]);
     return { geo, color, m: new T.Matrix4().compose(_p, _q, _s) };
   }
-  const box = (w, h, d) => new T.BoxGeometry(w, h, d);
-  const cyl = (rt, rb, h, s) => new T.CylinderGeometry(rt, rb, h, s || 12);
-  const sph = (r, w, h) => new T.SphereGeometry(r, w || 12, h || 8);
-  const hemi = (r, w) => new T.SphereGeometry(r, w || 12, 5, 0, PI * 2, 0, PI / 2);
-  const ico = (r, d) => new T.IcosahedronGeometry(r, d || 0);
-  const cone = (r, h, s) => new T.ConeGeometry(r, h, s || 10);
+  // ---- 圓潤化：方塊圓角、圓柱邊緣圓弧、球體加細分，搭配平滑著色（objMat 不用 flatShading） ----
+  // 圓角方塊：先切成 n×n×n 格，把格點重新分配成「中間平面＋邊緣一圈」，再把邊緣點推到半徑 r 的圓弧上
+  function box(w, h, d) {
+    const mn = Math.min(w, h, d);
+    if (mn < 0.07 || Math.max(w, h, d) < 0.12) return new T.BoxGeometry(w, h, d); // 薄片、小零件（窗戶、螢幕、按鈕）維持原樣省頂點
+    const r = Math.min(mn * 0.2, 0.12), k = mn >= 0.25 ? 2 : 1, n = 2 * k + 1;
+    const g = new T.BoxGeometry(w, h, d, n, n, n);
+    const pa = g.attributes.position.array, na = g.attributes.normal.array, half = [w / 2, h / 2, d / 2];
+    const v = [0, 0, 0], inner = [0, 0, 0];
+    for (let i = 0; i < pa.length; i += 3) {
+      let len = 0;
+      for (let a = 0; a < 3; a++) {
+        const c = pa[i + a], H = half[a], au = Math.min(1, Math.abs(c) / H), lim = 1 / n;
+        v[a] = Math.sign(c) * (au <= lim + 1e-6 ? (au / lim) * (H - r) : H - r + ((au - lim) / (1 - lim)) * r);
+        inner[a] = Math.max(-(H - r), Math.min(H - r, v[a]));
+        len += (v[a] - inner[a]) ** 2;
+      }
+      len = Math.sqrt(len);
+      if (len < 1e-9) continue;
+      for (let a = 0; a < 3; a++) {
+        const nn = (v[a] - inner[a]) / len;
+        pa[i + a] = inner[a] + nn * r;
+        na[i + a] = nn;
+      }
+    }
+    return g;
+  }
+  // 圓柱：用旋轉體畫出「平底 → 圓弧 → 側面 → 圓弧 → 平頂」的剖面，邊緣不再是尖角
+  function cyl(rt, rb, h, s) {
+    s = s || 12;
+    if (s >= 10) s = Math.min(20, Math.round(s * 1.2));
+    if (h < 0.05 || Math.max(rt, rb) < 0.03) return new T.CylinderGeometry(rt, rb, h, s);
+    const bev = (rr) => (rr > 0.025 ? Math.min(rr * 0.35, h * 0.22, 0.1) : 0);
+    const bt = bev(rt), bb = bev(rb), y0 = -h / 2, y1 = h / 2, pts = [];
+    const V = (x, y) => pts.push(new T.Vector2(Math.max(0, x), y));
+    V(0, y0);
+    if (bb) { V(rb - bb, y0); V(rb - bb * 0.29, y0 + bb * 0.29); V(rb, y0 + bb); } else { V(rb, y0); V(rb, y0); } // 重複點＝保留尖角
+    if (bt) { V(rt, y1 - bt); V(rt - bt * 0.29, y1 - bt * 0.29); V(rt - bt, y1); } else { V(rt, y1); V(rt, y1); }
+    V(0, y1);
+    return new T.LatheGeometry(pts, s);
+  }
+  const sph = (r, w, h) => (r < 0.05 ? new T.SphereGeometry(r, w || 12, h || 8)
+    : new T.SphereGeometry(r, Math.min(22, Math.round((w || 12) * 1.3)), Math.min(14, Math.round((h || 8) * 1.3))));
+  const hemi = (r, w) => new T.SphereGeometry(r, Math.round((w || 12) * 1.3), 7, 0, PI * 2, 0, PI / 2);
+  // 二十面體多細分一層、法線朝外，樹叢之類會變成圓滾滾的一團
+  function ico(r, d) {
+    const g = new T.IcosahedronGeometry(r, (d || 0) + 1);
+    const pa = g.attributes.position.array, na = g.attributes.normal.array;
+    for (let i = 0; i < pa.length; i += 3) {
+      const l = Math.hypot(pa[i], pa[i + 1], pa[i + 2]) || 1;
+      na[i] = pa[i] / l; na[i + 1] = pa[i + 1] / l; na[i + 2] = pa[i + 2] / l;
+    }
+    return g;
+  }
+  const cone = (r, h, s) => new T.ConeGeometry(r, h, s >= 10 || !s ? Math.min(16, Math.round((s || 10) * 1.3)) : s);
   const torus = (R, t, rs, ts) => new T.TorusGeometry(R, t, rs || 8, ts || 18);
+  // 貼在球面上的扁圓斑點：dir 為從球心往外的方向（自動轉成面向外）
+  const _zf = new T.Vector3(0, 0, 1), _dq = new T.Quaternion(), _de = new T.Euler();
+  function patch(color, size, center, dir, dist, flat) {
+    const d = new T.Vector3(dir[0], dir[1], dir[2]).normalize();
+    _de.setFromQuaternion(_dq.setFromUnitVectors(_zf, d));
+    return P(new T.SphereGeometry(size, 8, 6), color, [center[0] + d.x * dist, center[1] + d.y * dist, center[2] + d.z * dist], [_de.x, _de.y, _de.z], [1, 1, flat || 0.35]);
+  }
   // 可愛動物共用：一對黑眼睛＋白色亮點、一對粉紅腮紅（左右對稱，x 為離中線距離）
   const face = (x, y, z, r) => [
     P(sph(r, 8, 6), '#212121', [-x, y, z]), P(sph(r, 8, 6), '#212121', [x, y, z]),
@@ -909,7 +965,7 @@
       names: { white: '骰子', yellow: '黃骰子' },
       build: (c) => {
         const parts = [P(box(0.4, 0.4, 0.4), c, [0, 0.2, 0])];
-        const pip = (x, y, z) => parts.push(P(box(0.07, 0.07, 0.07), '#263238', [x, y, z]));
+        const pip = (x, y, z) => parts.push(P(sph(0.038, 6, 4), '#263238', [x === 0.185 ? 0.198 : x, y === 0.385 ? 0.398 : y, z === 0.185 ? 0.198 : z], null, [x === 0.185 ? 0.4 : 1, y === 0.385 ? 0.4 : 1, z === 0.185 ? 0.4 : 1]));
         // 上面 5 點、正面 4 點、右邊 6 點（只做看得到的面）
         [[0, 0], [-0.1, -0.1], [0.1, 0.1], [-0.1, 0.1], [0.1, -0.1]].forEach(([a, b]) => pip(a, 0.385, b));
         [[-0.1, -0.1], [0.1, 0.1], [-0.1, 0.1], [0.1, -0.1]].forEach(([a, b]) => pip(a, 0.2 + b, 0.185));
@@ -1096,7 +1152,13 @@
     },
     soccer: {
       name: '足球', r: 0.26,
-      build: () => [P(new T.IcosahedronGeometry(0.25, 1), (x, y, z) => ((Math.round(x * 9) + Math.round(y * 9) + Math.round(z * 9)) % 3 === 0 ? '#212121' : '#fafafa'), [0, 0.25, 0])],
+      build: () => {
+        // 白球＋12 塊黑色五角斑（二十面體頂點方向）
+        const f = 1.618, parts = [P(sph(0.25, 14, 10), '#fafafa', [0, 0.25, 0])];
+        [[0, 1, f], [0, 1, -f], [0, -1, f], [0, -1, -f], [1, f, 0], [1, -f, 0], [-1, f, 0], [-1, -f, 0], [f, 0, 1], [f, 0, -1], [-f, 0, 1], [-f, 0, -1]]
+          .forEach((d) => parts.push(patch('#263238', 0.075, [0, 0.25, 0], d, 0.235)));
+        return parts;
+      },
     },
     board: {
       name: '托盤', r: 0.48, w: 0.28,
@@ -1178,7 +1240,13 @@
     },
     egg: {
       name: '恐龍蛋', r: 0.32,
-      build: () => [P(sph(0.26, 12, 10), (x, y, z) => ((Math.round(x * 7) * 3 + Math.round(y * 7) * 5 + Math.round(z * 7)) % 4 === 0 ? '#d81b60' : '#f8bbd0'), [0, 0.32, 0], null, [1, 1.25, 1])],
+      build: () => {
+        // 粉紅蛋殼＋深粉色圓斑（斑點沿著拉長的蛋殼表面擺）
+        const parts = [P(sph(0.26, 12, 10), '#f8bbd0', [0, 0.32, 0], null, [1, 1.25, 1])];
+        [[0.3, 0.6, 0.75], [-0.7, 0.3, 0.6], [0.8, -0.1, 0.5], [-0.2, -0.4, 0.9], [0.1, 0.95, -0.2], [-0.8, 0.2, -0.5], [0.6, 0.3, -0.75], [-0.1, -0.5, -0.85], [0.95, -0.4, -0.1]]
+          .forEach(([x, y, z]) => { const l = Math.hypot(x, y, z); parts.push(patch('#ec407a', 0.06, [0, 0.32, 0], [x, y * 0.8, z], 0.25 * Math.hypot(x / l, (y / l) * 1.25, z / l))); });
+        return parts;
+      },
     },
     papercup: {
       name: '紙杯', r: 0.16,
@@ -1487,12 +1555,83 @@
   };
 
   const geoCache = {};
+  // ---- 可愛小臉：y = 眼睛高度（佔物件高度比例），s = 大小倍率，x = 左右偏移（佔寬度比例），
+  //      yaw = 臉朝向（預設往右前方轉一點，縮圖看得到正臉），dark = 深色物件改用白眼睛 ----
+  const CUTE = {
+    apple: { y: 0.45 }, tomato: { y: 0.45 }, orange: { y: 0.45 }, peach: { y: 0.45 }, plum: { y: 0.45 },
+    pear: { y: 0.33 }, strawberry: { y: 0.6 }, pumpkin: { y: 0.45 }, watermelon: { y: 0.5 }, pepper: { y: 0.45 },
+    turnip: { y: 0.3, s: 0.9 }, onion: { y: 0.3, s: 0.9 }, onigiri: { y: 0.55, s: 0.8 }, egg: { y: 0.5 },
+    gumball: { y: 0.5 }, jar: { y: 0.38 }, juicebox: { y: 0.42 }, papercup: { y: 0.45 }, can: { y: 0.55 },
+    cup: { y: 0.45, yaw: -0.25 }, cocoa: { y: 0.42, yaw: -0.25 }, cheese: { y: 0.5 }, burger: { y: 0.72, s: 0.9 },
+    cake: { y: 0.3 }, bomb: { y: 0.42, dark: true }, jelly: { y: 0.38 }, macaron: { y: 0.66, s: 0.9 }, cupcake: { y: 0.2, s: 0.85 },
+    icecream: { y: 0.72, s: 0.8 }, hydrant: { y: 0.6, s: 1.15 }, trash: { y: 0.5 }, barrel: { y: 0.5 },
+    cube: { y: 0.45 }, gift: { y: 0.33, x: 0.22, s: 0.8 }, nigiri: { y: 0.4, s: 0.8 },
+  };
+  const _ray = new T.Raycaster(), _ro = new T.Vector3(), _rd = new T.Vector3(0, 0, -1), _fq = new T.Quaternion(), _rq = new T.Quaternion();
+  function cuteFace(geo, cfg) {
+    const bb = geo.boundingBox, Hh = bb.max.y - bb.min.y, yaw = cfg.yaw == null ? 0.4 : cfg.yaw;
+    const W = (bb.max.x - bb.min.x) * Math.cos(yaw) + (bb.max.z - bb.min.z) * Math.abs(Math.sin(yaw));
+    const mesh = new T.Mesh(geo);
+    // 射線從臉的正前方打過來：right / fwd 為轉過 yaw 之後的左右、前後方向
+    const rx = Math.cos(yaw), rz = -Math.sin(yaw), fx = Math.sin(yaw), fz = Math.cos(yaw), far = bb.getSize(new T.Vector3()).length() + 1;
+    const ox = (bb.min.x + bb.max.x) / 2, oz = (bb.min.z + bb.max.z) / 2;
+    _rd.set(-fx, 0, -fz);
+    const er = Math.min(W * 0.072, Hh * 0.095) * (cfg.s || 1), cx = W * (cfg.x || 0), ey = bb.min.y + Hh * cfg.y;
+    const hit = (x, y) => {
+      _ray.set(_ro.set(ox + rx * x + fx * far, y, oz + rz * x + fz * far), _rd);
+      const h = _ray.intersectObject(mesh)[0];
+      return h && h.face ? { p: h.point, n: h.face.normal.clone().normalize() } : null;
+    };
+    const parts = [];
+    // 依表面法線擺放：先轉成面向法線，再套 extra 旋轉（嘴巴要把上半圓弧轉成下半）
+    const put = (g, color, h, off, scl, extra) => {
+      _fq.setFromUnitVectors(_zf, h.n);
+      if (extra) _fq.multiply(extra);
+      const pos = h.p.clone().addScaledVector(h.n, off);
+      parts.push({ geo: g, color, m: new T.Matrix4().compose(pos, _fq, new T.Vector3(...scl)) });
+    };
+    const gap = Math.max(er * 2.1, W * 0.15 * (cfg.s || 1));
+    for (const sx of [-1, 1]) {
+      const e = hit(cx + sx * gap, ey);
+      if (!e) return null;
+      if (cfg.dark) { // 深色物件：白眼睛＋黑眼珠
+        put(new T.SphereGeometry(er * 1.25, 12, 9), '#ffffff', e, 0, [1, 1.2, 0.45]);
+        put(new T.SphereGeometry(er * 0.7, 10, 7), '#2b2523', e, er * 0.22, [1, 1.15, 0.5]);
+      } else put(new T.SphereGeometry(er, 8, 6), '#2b2523', e, 0, [1, 1.18, 0.5]);
+      const hl = hit(cx + sx * gap + er * 0.32, ey + er * 0.42);
+      if (hl) put(new T.SphereGeometry(er * 0.36, 5, 4), '#ffffff', hl, er * 0.38, [1, 1, 0.6]);
+      const b = hit(cx + sx * (gap + er * 1.6), ey - er * 1.5);
+      if (b) put(new T.SphereGeometry(er * 0.95, 6, 4), '#ff8fab', b, 0, [1.35, 0.75, 0.25]);
+    }
+    const m = hit(cx, ey - er * 1.5);
+    if (m) put(new T.TorusGeometry(er * 0.7, er * 0.22, 4, 8, PI), cfg.dark ? '#ff8fab' : '#5d2e2a', m, 0, [1, 1, 0.8], _rq.setFromAxisAngle(_zf, PI));
+    return parts.length ? merge(parts) : null;
+  }
+  // 兩個 merge 出來的幾何（同樣的 position / normal / color）接成一個
+  function concatGeo(a, b) {
+    const geo = new T.BufferGeometry();
+    ['position', 'normal', 'color'].forEach((k) => {
+      const x = a.attributes[k].array, y = b.attributes[k].array, out = new Float32Array(x.length + y.length);
+      out.set(x); out.set(y, x.length);
+      geo.setAttribute(k, new T.BufferAttribute(out, 3));
+    });
+    a.dispose(); b.dispose();
+    geo.computeBoundingBox();
+    geo.computeBoundingSphere();
+    return geo;
+  }
+
   function getGeo(kind, color) {
     const key = kind + '|' + (color || '');
     if (!geoCache[key]) {
       const def = KINDS[kind];
       const hex = def.colors ? def.colors[color] || Object.values(def.colors)[0] : null;
-      geoCache[key] = merge(def.build(hex, color));
+      let geo = merge(def.build(hex, color));
+      if (CUTE[kind]) {
+        const f = cuteFace(geo, CUTE[kind]);
+        if (f) geo = concatGeo(geo, f);
+      }
+      geoCache[key] = geo;
     }
     return geoCache[key];
   }
@@ -1509,7 +1648,7 @@
     return def.name;
   }
 
-  const objMat = new T.MeshPhongMaterial({ vertexColors: true, flatShading: true, shininess: 14, specular: 0x1a1a1a });
+  const objMat = new T.MeshPhongMaterial({ vertexColors: true, shininess: 22, specular: 0x222222 });
 
   // 目標圖示：用獨立的小渲染器把物件拍成縮圖
   let tR = null, tScene = null, tCam = null;
