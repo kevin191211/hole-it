@@ -881,9 +881,13 @@
       return m;
     });
     G.sinking = [];
-    G.spins = (L.spinners || []).map(([x, z, r, speed]) => {
-      const m = new T.Mesh(new T.CircleGeometry(r, 48).rotateX(-PI / 2), groundMat({ map: spinnerTexture() }));
-      m.position.set(x, 0.015, z);
+    G.spins = (L.spinners || []).map(([x, z, r, speed], i) => {
+      // 轉盤可能互相重疊：每個盤高度與深度偏移都錯開，避免重疊處 z-fighting 閃爍
+      const m = new T.Mesh(new T.CircleGeometry(r, 48).rotateX(-PI / 2), groundMat({
+        map: spinnerTexture(), polygonOffset: true, polygonOffsetFactor: -1 - i, polygonOffsetUnits: -4 * (i + 1),
+      }));
+      m.position.set(x, 0.015 + i * 0.006, z);
+      m.renderOrder = i;
       m.receiveShadow = true;
       m.userData.own = true;
       world.add(m);
@@ -946,7 +950,8 @@
     }));
     G.ents.forEach((e) => {
       e.goal = G.goals.some((g) => match(e, g));
-      e.spinner = G.spins.findIndex((s) => (e.pos.x - s.x) ** 2 + (e.pos.z - s.z) ** 2 < s.r * s.r);
+      // 重疊區以最上層（後建立）的盤為準，跟畫面一致
+      e.spinner = G.spins.findLastIndex((s) => (e.pos.x - s.x) ** 2 + (e.pos.z - s.z) ** 2 < s.r * s.r);
     });
     G.goals.forEach((g) => {
       const big = G.ents.find((e) => e.base > 1 && match(e, g));
