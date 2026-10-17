@@ -197,10 +197,11 @@
   // ---------- 渲染器 ----------
   const canvas = $('game');
   const renderer = new T.WebGLRenderer({ canvas, antialias: true, stencil: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isTouch ? 1.75 : 2));
+  // 手機：解析度上限 1.5 倍、陰影用較便宜的 PCF、貼圖各向異性上限 4（填充率是手機的主要瓶頸）
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isTouch ? 1.5 : 2));
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = T.PCFSoftShadowMap;
-  const maxAniso = renderer.capabilities.getMaxAnisotropy();
+  renderer.shadowMap.type = isTouch ? T.PCFShadowMap : T.PCFSoftShadowMap;
+  const maxAniso = Math.min(renderer.capabilities.getMaxAnisotropy(), isTouch ? 4 : 16);
 
   const scene = new T.Scene();
   const camera = new T.PerspectiveCamera(40, 1, 0.1, 500);
@@ -208,8 +209,8 @@
   scene.add(hemi);
   const sun = new T.DirectionalLight(0xffffff, 0.62);
   // 夜晚關：只靠黑洞上方這盞聚光燈照亮周圍
+  // 只在夜晚關加進場景：光源數會編進每個材質的 shader，強度 0 也照樣逐像素計算
   const spot = new T.SpotLight(0xfff1d0, 0, 0, 0.5, 0.6, 0);
-  scene.add(spot, spot.target);
   sun.castShadow = true;
   sun.shadow.mapSize.set(isTouch ? 1024 : 2048, isTouch ? 1024 : 2048);
   sun.shadow.bias = -0.0005;
@@ -762,6 +763,8 @@
     hemi.intensity = L.night ? 0.06 : 0.5;
     sun.intensity = L.night ? 0.05 : 0.62;
     spot.intensity = L.night ? 1.6 : 0;
+    if (L.night) scene.add(spot, spot.target);
+    else scene.remove(spot, spot.target);
 
     const S = L.size;
     const ground = new T.Mesh(new T.PlaneGeometry(S, S).rotateX(-PI / 2), groundMat({ map: H.groundTexture(L, maxAniso) }));
@@ -914,9 +917,15 @@
 
   // ---------- 主迴圈 ----------
   const clock = new T.Clock();
-  function frame() {
+  // 蓋著對話框或在主選單時不必全速重畫（對話框的模糊背景每幀重算很耗電）
+  const FRAME_GAP = { paused: 1000 / 10, lost: 1000 / 15, menu: 1000 / 30 };
+  let lastFrame = 0;
+  function frame(now) {
     requestAnimationFrame(frame);
-    let dt = Math.min(clock.getDelta(), 0.05);
+    const gap = FRAME_GAP[G.state];
+    if (gap && now - lastFrame < gap - 2) return;
+    lastFrame = now;
+    let dt = Math.min(clock.getDelta(), gap ? 0.1 : 0.05);
     if (G.hitstop > 0) { // 頓幀：重擊瞬間畫面幾乎停住
       G.hitstop -= dt;
       dt *= 0.04;
@@ -940,6 +949,7 @@
     updateHoleMesh(dt);
     updateArrow(dt);
     updateCamera(dt);
+    renderer.shadowMap.autoUpdate = G.state !== 'paused';
     renderer.render(scene, camera);
   }
 
@@ -1230,25 +1240,34 @@
       levelFx.material.opacity = (1 - k) * 0.9;
     }
     // 黑洞下方的「Size N」標籤
-    const lab = $('sizeLabel');
+    const lab = labEls.size;
     if (G.state === 'playing' || G.state === 'intro' || G.state === 'won') {
       const sp = screenOf(hole.pos.x, 0, hole.pos.z + hole.vis * 1.42);
-      lab.style.transform = `translate(${sp.x}px, ${sp.y}px) translate(-50%, -50%)`;
-      lab.textContent = hole.prog >= 1 && radiusOf(hole.size + 1) > (G.L.maxR || G.half * 0.3)
+      setLabel(lab, sp, hole.prog >= 1 && radiusOf(hole.size + 1) > (G.L.maxR || G.half * 0.3)
         ? `等級 ${hole.size}｜最大`
-        : `等級 ${hole.size}｜還差 ${Math.max(0, xpNeed(hole.size) - hole.xp)} 分`;
-      lab.classList.remove('hidden');
-    } else lab.classList.add('hidden');
+        : `等級 ${hole.size}｜還差 ${Math.max(0, xpNeed(hole.size) - hole.xp)} 分`);
+    } else setHidden(lab, true);
     // 黑洞上方的倒數時間
-    const tl = $('timeLabel');
+    const tl = labEls.time;
     if (G.state === 'playing' || G.state === 'intro') {
       const sp = screenOf(hole.pos.x, 0, hole.pos.z - hole.vis * 1.75);
       const sec = Math.max(0, Math.ceil(G.time));
-      tl.style.transform = `translate(${sp.x}px, ${sp.y}px) translate(-50%, -50%)`;
-      tl.textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
-      tl.classList.toggle('warn', sec <= 10);
-      tl.classList.remove('hidden');
-    } else tl.classList.add('hidden');
+      setLabel(tl, sp, `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`);
+      if (tl._warn !== (sec <= 10)) tl.classList.toggle('warn', (tl._warn = sec <= 10));
+    } else setHidden(tl, true);
+  }
+  const labEls = { size: $('sizeLabel'), time: $('timeLabel') };
+  function setHidden(el, h) {
+    if (el._hid === h) return;
+    el._hid = h;
+    el.classList.toggle('hidden', h);
+  }
+  // 位置取到 0.5px、文字有變才寫，避免每幀觸發樣式重算
+  function setLabel(el, sp, text) {
+    const tf = `translate(${Math.round(sp.x * 2) / 2}px, ${Math.round(sp.y * 2) / 2}px) translate(-50%, -50%)`;
+    if (el._tf !== tf) el.style.transform = el._tf = tf;
+    if (el._tx !== text) el.textContent = el._tx = text;
+    setHidden(el, false);
   }
 
   // ---------- 防護罩、加速鞋拖尾 ----------
@@ -1612,7 +1631,9 @@
       const grounded = p.y < 0.05 && e.supports.length === 0;
       if (!grounded) continue;
       if (e.walk) walk(e, dt);
-      let dx = hx - p.x, dz = hz - p.z, d = Math.hypot(dx, dz);
+      let dx = hx - p.x, dz = hz - p.z;
+      if (!magnet && !e.tilt && !e.dirty && dx * dx + dz * dz > (R + e.r) * (R + e.r)) continue;
+      let d = Math.sqrt(dx * dx + dz * dz);
       if (magnet && e.goal && !e.above.length && d < R * 3 + 7 && d > 0.05 && e.r <= R * 0.95 && goalOpen(e)) {
         const s = Math.min(d, (5 + R * 2) * dt);
         const nx = p.x + (dx / d) * s, nz = p.z + (dz / d) * s;
@@ -2120,10 +2141,13 @@
   }
 
   function updateBoostRings() {
-    document.querySelectorAll('.booster.active').forEach((b) => {
-      const k = b.dataset.boost;
-      b.style.setProperty('--p', ((G.boosts[k] || 0) / BOOST[k].dur).toFixed(3));
-    });
+    for (const k in G.boosts) {
+      if (!(G.boosts[k] > 0)) continue;
+      const b = document.querySelector(`.booster.active[data-boost="${k}"]`);
+      if (!b) continue;
+      const p = (Math.round(G.boosts[k] / BOOST[k].dur * 200) / 200).toFixed(3);
+      if (b._p !== p) b.style.setProperty('--p', (b._p = p));
+    }
   }
 
   // 道具說明：長按道具顯示，放開後幾秒自動收起
