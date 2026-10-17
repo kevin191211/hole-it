@@ -1196,3 +1196,39 @@ button {
 .count-big { position: absolute; left: 50%; top: 28%; font-size: clamp(110px, 34vw, 180px); font-weight: 700; line-height: 1; color: rgba(255, 255, 255, 0.92); -webkit-text-stroke: 3px #c81e3a; text-shadow: 0 8px 0 #8f1028, 0 0 40px rgba(255, 40, 60, 0.6); pointer-events: none; animation: countBig 0.9s cubic-bezier(0.2, 1.2, 0.4, 1) forwards; }
 @keyframes countBig { 0% { opacity: 0; transform: translate(-50%, -50%) scale(2.2); } 25% { opacity: 0.85; transform: translate(-50%, -50%) scale(1); } 100% { opacity: 0; transform: translate(-50%, -50%) scale(0.85); } }
 @media (prefers-reduced-motion: reduce) { #dangerGlow.on { animation: none; } .timer.beat { animation: none; } }
+
+/* ========== 無盡模式 ========== */
+.endless-btn { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 11px 16px; border: 0; border-radius: 20px; font: inherit; font-size: 18px; font-weight: 700; color: #fff; background: linear-gradient(90deg, #5b2fc9, #8e44ff 55%, #d946ef); box-shadow: 0 5px 0 #3a1a8c, 0 0 14px 2px rgba(142, 68, 255, 0.45); text-shadow: 0 2px 0 rgba(0, 0, 0, 0.3); cursor: pointer; }
+.endless-btn:active { transform: translateY(4px); box-shadow: 0 1px 0 #3a1a8c; }
+.endless-btn .en-info { font-size: 15px; padding: 3px 12px; border-radius: 12px; background: rgba(0, 0, 0, 0.25); font-variant-numeric: tabular-nums; }
+.endless-btn.locked { background: linear-gradient(90deg, #8d88a8, #a39fbb); box-shadow: 0 5px 0 #66627f; text-shadow: none; }
+.en-rules { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; text-align: left; }
+.en-rules div { padding: 8px 12px; border-radius: 12px; background: #f5f2ff; font-size: 15px; line-height: 1.35; }
+.en-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 8px 0; }
+.en-stats div { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 2px; border-radius: 12px; background: #f5f2ff; }
+.en-stats b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.en-stats span { font-size: 11px; color: var(--ink-soft); font-weight: 700; }
+
+/* ========== 成就徽章牆 ========== */
+.tab-dot { display: inline-block; width: 10px; height: 10px; margin-left: 4px; border-radius: 50%; background: #ff3b4e; vertical-align: 2px; animation: pulse 1s infinite; }
+.ach-list { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 12px; max-height: 46vh; overflow-y: auto; padding: 2px; }
+.ach { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 16px; background: #f5f2ff; border: 2px solid #e0d8fb; text-align: left; }
+.ach.can { background: #fff8e1; border-color: var(--gold); box-shadow: 0 0 10px 1px rgba(255, 200, 61, 0.6); }
+.ach.done { opacity: 0.7; }
+.ach-ic { flex: none; width: 38px; height: 38px; display: grid; place-items: center; border-radius: 12px; background: #fff; font-style: normal; font-size: 22px; line-height: 1; }
+.ach-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ach-top { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.ach-top b { font-size: 15px; }
+.ach-medals { flex: none; display: flex; gap: 2px; }
+.ach-medals em { font-style: normal; font-size: 15px; filter: grayscale(1); opacity: 0.35; }
+.ach-medals em.rdy { filter: none; opacity: 1; animation: pulse 1s infinite; }
+.ach-medals em.got { filter: none; opacity: 1; }
+.ach-desc { font-size: 12px; color: var(--ink-soft); font-weight: 700; }
+.ach-bar { position: relative; height: 16px; border-radius: 8px; background: #dcd5f5; overflow: hidden; }
+.ach-bar i { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #7ee05a, #3fae2a); border-radius: 8px; }
+.ach-bar b { position: relative; display: block; text-align: center; font-size: 11px; line-height: 16px; color: var(--ink); }
+.ach-btn { flex: none; min-width: 62px; padding: 6px 8px; border-radius: 12px; border: 0; font: inherit; font-size: 14px; font-weight: 700; color: #fff; background: linear-gradient(180deg, #ffc83d, #ee9d00); box-shadow: 0 3px 0 #c77d00; cursor: pointer; }
+.ach-btn small { display: block; font-size: 11px; opacity: 0.9; }
+.ach-btn:disabled { background: transparent; color: var(--ink-soft); box-shadow: inset 0 0 0 2px #dcd5f5; font-size: 12px; cursor: default; }
+.ach.done .ach-btn:disabled { color: #15803d; box-shadow: inset 0 0 0 2px #86efac; }
+.challenge-tag.endless { left: 50%; transform: translateX(-50%); top: calc(var(--safe-t) + 66px); white-space: nowrap; background: rgba(91, 47, 201, 0.92); }
