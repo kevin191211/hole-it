@@ -1234,9 +1234,9 @@ button {
 .challenge-tag.endless { left: 50%; transform: translateX(-50%); top: calc(var(--safe-t) + 66px); white-space: nowrap; background: rgba(91, 47, 201, 0.92); }
 
 /* ---------- 黃金獵犬吉祥物 ---------- */
-/* 坐在副標題左邊、臉朝文字；絕對定位，不佔版面高度 */
-.logo p { position: relative; display: inline-block; }
-.menu-dog { position: absolute; right: 100%; bottom: -10px; width: 64px; height: auto; margin-right: 6px; filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.3)); transform-origin: 50% 90%; animation: dogWag 1.8s ease-in-out infinite; pointer-events: none; }
+/* 坐在標題「黑」的左下角、臉朝標題；絕對定位不佔版面，大小跟著標題字級（em） */
+.logo h1 { position: relative; display: inline-block; }
+.menu-dog { position: absolute; right: 100%; bottom: -0.04em; width: 0.8em; height: auto; margin-right: 0.02em; filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.3)); transform-origin: 50% 90%; animation: dogWag 1.8s ease-in-out infinite; pointer-events: none; }
 .menu-dog:not([src]) { visibility: hidden; }
 @keyframes dogWag { 0%, 100% { transform: rotate(-3deg) translateY(0); } 50% { transform: rotate(3deg) translateY(-6px); } }
 .dog-pic { display: block; width: 104px; height: 104px; margin: -10px auto -6px; filter: drop-shadow(0 5px 6px rgba(0, 0, 0, 0.18)); }
@@ -1246,7 +1246,30 @@ button {
 @keyframes dogSad { 0%, 100% { transform: rotate(-6deg); } 50% { transform: rotate(-2deg) translateY(2px); } }
 .dog-pic.peek { width: 76px; height: 76px; margin: -14px auto -8px; animation: dogWag 1.8s ease-in-out infinite; transform-origin: 50% 90%; }
 @media (max-height: 720px) {
-  .menu-dog { width: 54px; bottom: -8px; }
   .dog-pic { width: 80px; height: 80px; }
   .dog-pic.peek { display: none; }
+}
+
+/* ---------- 主選單：矮螢幕（筆電有縮放、橫向視窗、矮手機）也要整個放得下 ---------- */
+#menu { overflow-y: auto; } /* 最後防線：真的放不下時可以捲動，不會被切掉 */
+@media (max-height: 780px) {
+  #menu.screen { padding-top: calc(var(--safe-t) + 10px); padding-bottom: calc(var(--safe-b) + 10px); }
+  .menu-bottom { gap: 9px; }
+  .big-btn.green { padding: 12px 20px; }
+  .event-btn { margin-top: 0; padding: 9px 8px; font-size: 18px; }
+  .tile { padding: 6px 2px 5px; gap: 3px; }
+  .t-ic { width: 34px; height: 34px; font-size: 19px; border-radius: 12px; }
+  .chest-bar { padding: 5px 12px 5px 8px; }
+  .chest-ico { width: 32px; height: 32px; font-size: 23px; }
+  .endless-btn { padding: 8px 14px; font-size: 16px; }
+  .level-panel { padding: 8px 10px 10px; }
+  .panel-title { margin-bottom: 6px; }
+  .level-grid { max-height: 112px; }
+  .transfer-btn { margin-bottom: 2px; padding: 4px 12px; font-size: 13px; }
+}
+@media (max-width: 440px) { .menu-dog { width: 0.62em; } } /* 窄手機：標題幾乎滿版，狗狗縮小才不會貼邊 */
+@media (max-height: 660px) {
+  .logo h1 { font-size: clamp(40px, 12vw, 56px); }
+  .level-grid { max-height: 58px; }
+  .version { display: none; }
 }
