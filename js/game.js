@@ -173,9 +173,29 @@
     try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch (e) { return {}; }
   }
   const SAVE_DEFAULTS = () => ({ level: 1, unlocked: 1, stars: {}, coins: 200, muted: false, speed: 1, ctrl: 'joy', bag: {}, granted: {}, skins: ['classic'], skin: 'classic', fxs: ['none'], fx: 'none', trails: ['none'], trail: 'none', daily: {}, dex: {}, missions: null, chestsOpened: 0, checkin: { last: '', day: 0 }, event: {}, challenges: {} });
+  // 存檔來源（localStorage、存檔碼、網址 #save=）都可能被改過：只留數字、布林、短代號字串，
+  // 含 < > 引號空白的字串和 __proto__ 等鍵一律丟掉，免得被塞進 innerHTML（XSS）
+  const MAX_LEVEL = 9999;
+  const SAFE_STR = /^[\w\-.:|]{0,64}$/;
+  const BAD_KEY = new Set(['__proto__', 'constructor', 'prototype']);
+  function cleanVal(v, depth) {
+    if (typeof v === 'number') return Number.isFinite(v) ? Math.max(-1e9, Math.min(1e9, v)) : undefined;
+    if (typeof v === 'boolean' || v === null) return v;
+    if (typeof v === 'string') return SAFE_STR.test(v) && !BAD_KEY.has(v) ? v : undefined;
+    if (typeof v !== 'object' || depth > 6) return undefined;
+    if (Array.isArray(v)) return v.slice(0, 1000).map((x) => cleanVal(x, depth + 1)).filter((x) => x != null);
+    const o = {};
+    for (const k of Object.keys(v).slice(0, 5000)) {
+      if (!SAFE_STR.test(k) || BAD_KEY.has(k)) continue;
+      const x = cleanVal(v[k], depth + 1);
+      if (x !== undefined) o[k] = x;
+    }
+    return o;
+  }
   // 欄位型別跟預設不同（null、陣列換物件、Infinity 等）就用預設，壞存檔不會讓遊戲開不起來
   function cleanSave(d) {
-    const D = SAVE_DEFAULTS(), o = Object.assign({}, D, d && typeof d === 'object' ? d : {});
+    d = cleanVal(d, 0);
+    const D = SAVE_DEFAULTS(), o = Object.assign({}, D, d && typeof d === 'object' && !Array.isArray(d) ? d : {});
     const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
     for (const k in D) {
       const a = D[k], v = o[k];
@@ -186,9 +206,10 @@
         : typeof v === typeof a;
       if (!ok) o[k] = a;
     }
-    o.unlocked = Math.max(1, Math.floor(o.unlocked));
+    o.unlocked = Math.min(MAX_LEVEL, Math.max(1, Math.floor(o.unlocked))); // 太大會讓選關畫面建出上億個按鈕而卡死
     o.level = Math.min(Math.max(1, Math.floor(o.level)), o.unlocked);
     o.coins = Math.max(0, Math.floor(o.coins));
+    o.speed = Math.max(0.5, Math.min(2, o.speed));
     return o;
   }
   const save = cleanSave(loadSave());
@@ -205,7 +226,7 @@
       const raw = String(code || '').trim().replace(/^HI1\./, '');
       const data = JSON.parse(decodeURIComponent(escape(atob(raw))));
       if (!data || typeof data !== 'object' || !(data.unlocked >= 1) || typeof data.coins !== 'number') return null;
-      return data;
+      return cleanSave(data); // 確認匯入的彈窗會顯示這份資料，也要先洗過
     } catch (e) { return null; }
   }
   function applySave(data) {
@@ -2919,7 +2940,7 @@
   function ensureMissions() {
     const d = todayKey();
     let m = save.missions;
-    if (m && m.date === d && Array.isArray(m.list) && m.list.length === 3 && m.list.every((x) => MISSION_DEFS[x.type])) {
+    if (m && m.date === d && Array.isArray(m.list) && m.list.length === 3 && m.list.every((x) => x && Object.prototype.hasOwnProperty.call(MISSION_DEFS, x.type) && MISSION_DEFS[x.type].targets.includes(x.target))) {
       m.prog = m.prog || {};
       if (!Array.isArray(m.claimed)) m.claimed = [false, false, false];
       return m;
@@ -3451,7 +3472,7 @@
   // 好友挑戰連結：?challenge=關卡號（或 d-YYYY-MM-DD）&t=剩餘秒數&s=分數；處理完會把這三個參數從網址拿掉
   const bootChallenge = takeChallengeParams();
   // 測試用：網址加 ?level=N 直接開第 N 關（同時解鎖到該關）
-  const testLv = parseInt(new URLSearchParams(location.search).get('level'), 10);
+  const testLv = Math.min(MAX_LEVEL, parseInt(new URLSearchParams(location.search).get('level'), 10));
   if (testLv >= 1) {
     save.unlocked = Math.max(save.unlocked, testLv);
     save.level = testLv;

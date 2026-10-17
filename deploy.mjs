@@ -1,7 +1,7 @@
 // 發佈到 GitHub Pages：版本號自動 +1、寫入發佈時間、更新快取參數，commit 後推上 GitHub（Pages 約一分鐘後更新）
 // 用法：node deploy.mjs "這次改了什麼"
 //       node deploy.mjs "這次改了什麼" --netlify   同時發到舊的 Netlify 網址（舊網址會自動帶存檔跳到新網址）
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, rmSync, mkdirSync, cpSync } from 'node:fs';
 import { execFileSync, execSync } from 'node:child_process';
 
 const NETLIFY_SITE_ID = '6cec1053-d11c-469d-aa27-80c593355b6b';
@@ -33,7 +33,12 @@ run('git', ['commit', '-q', '-m', msg]);
 run('git', ['push', '-q', 'origin', 'HEAD']);
 console.log('已推上 GitHub，約一分鐘後生效：https://kevin191211.github.io/hole-it/');
 if (netlify) {
+  // 只把網頁要用的檔案複製到 dist/ 再上傳，免得 .claude/、.netlify/、發佈腳本等一起公開
+  const dist = new URL('./dist/', import.meta.url);
+  rmSync(dist, { recursive: true, force: true });
+  mkdirSync(dist);
+  for (const p of ['index.html', 'css', 'js', 'icon.svg', 'manifest.webmanifest']) cpSync(new URL(p, cwd), new URL(p, dist), { recursive: true });
   // netlify 在 Windows 是 .cmd，要經過 shell 執行；訊息加引號才不會被空白切開
-  execSync(`netlify deploy --prod --no-build --dir . --site ${NETLIFY_SITE_ID} --message ${JSON.stringify(msg)}`, { stdio: 'inherit', cwd });
+  execSync(`netlify deploy --prod --no-build --dir dist --site ${NETLIFY_SITE_ID} --message ${JSON.stringify(msg)}`, { stdio: 'inherit', cwd });
 }
 console.log(`完成：v${ver}`);
