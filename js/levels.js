@@ -181,6 +181,69 @@
     },
   };
 
+  // ---------- 地板上的可愛小圖案：草地小花、粉紅愛心、紫色星星、水藍泡泡 ----------
+  function flowerAt(ctx, x, y, r, petal) {
+    ctx.fillStyle = petal;
+    for (let k = 0; k < 5; k++) {
+      const a = (k / 5) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.arc(x + Math.cos(a) * r * 0.55, y + Math.sin(a) * r * 0.55, r * 0.45, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#ffd54f';
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.32, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  function heartAt(ctx, x, y, r, color) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x, y + r * 0.9);
+    ctx.bezierCurveTo(x - r * 1.3, y + r * 0.1, x - r * 0.7, y - r * 0.9, x, y - r * 0.35);
+    ctx.bezierCurveTo(x + r * 0.7, y - r * 0.9, x + r * 1.3, y + r * 0.1, x, y + r * 0.9);
+    ctx.fill();
+  }
+  function starAt(ctx, x, y, r, color, rot) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    for (let k = 0; k < 10; k++) {
+      const a = rot + (k / 10) * Math.PI * 2, rr = k % 2 ? r * 0.45 : r;
+      ctx.lineTo(x + Math.sin(a) * rr, y - Math.cos(a) * rr);
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+  function cuteDeco(ctx, floor, S, u, px, R) {
+    const n = Math.round(S * S * 0.11);
+    const pick = (a) => a[Math.floor(R() * a.length)];
+    ctx.save();
+    for (let i = 0; i < n; i++) {
+      const x = R() * px, y = R() * px, r = (0.16 + R() * 0.14) * u;
+      if (floor === 'grass') {
+        ctx.globalAlpha = 0.85;
+        flowerAt(ctx, x, y, r, pick(['#ffffff', '#ffffff', '#f8bbd0', '#fff59d', '#e1bee7']));
+      } else if (floor === 'pink') {
+        ctx.globalAlpha = 0.6;
+        heartAt(ctx, x, y, r, pick(['#ffffff', '#f06292', '#ffcdd2']));
+      } else if (floor === 'purple') {
+        ctx.globalAlpha = 0.55;
+        starAt(ctx, x, y, r, pick(['#fff59d', '#ffffff', '#f8bbd0']), R() * 1.2);
+      } else if (floor === 'sky' || floor === 'blue') {
+        ctx.globalAlpha = 0.42;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = Math.max(1, r * 0.18);
+        ctx.beginPath();
+        ctx.arc(x, y, r * 0.8, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(x - r * 0.3, y - r * 0.3, r * 0.18, 0, Math.PI * 2);
+        ctx.fill();
+      } else break; // 石板、城市、萬聖節地板不加
+    }
+    ctx.restore();
+  }
+
   function groundTexture(L, aniso) {
     const S = L.size;
     const u = Math.floor(Math.min(40, 2048 / S));
@@ -190,6 +253,7 @@
     const ctx = c.getContext('2d');
     const w = (v) => (v + S / 2) * u;
     FLOORS[L.floor].draw(ctx, S, u, w, px, rng(L.seed + 11));
+    cuteDeco(ctx, L.floor, S, u, px, rng(L.seed + 29));
     const tex = new T.CanvasTexture(c);
     tex.anisotropy = aniso || 1;
     return tex;
