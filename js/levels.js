@@ -114,6 +114,20 @@
         }
       },
     },
+    // 萬聖節活動關：深紫色的夜晚地板
+    spooky: {
+      sky: '#1b1233', outer: '#241640', border: '#ff9a2e',
+      draw(ctx, S, u, w, px) {
+        ctx.fillStyle = '#3a2960';
+        ctx.fillRect(0, 0, px, px);
+        ctx.fillStyle = 'rgba(255,140,40,.10)';
+        for (let x = -S / 2; x < S / 2; x += 2) {
+          for (let z = -S / 2; z < S / 2; z += 2) {
+            if ((Math.round(x / 2) + Math.round(z / 2)) % 2 === 0) ctx.fillRect(w(x), w(z), 2 * u, 2 * u);
+          }
+        }
+      },
+    },
     city: {
       sky: '#bfe6ff', outer: '#8e959e', border: '#cfd8dc',
       draw(ctx, S, u, w, px, R) {
@@ -1001,7 +1015,7 @@
     const hard = !o.mode && idx % 10 === 0;
     const mode = o.mode || (hard ? 'boss' : MODES[idx % MODES.length]);
     const boss = mode === 'boss', chase = mode === 'chase', keymaze = mode === 'keymaze';
-    const theme = GEN[(n * 7 + Math.floor(idx / 3)) % GEN.length];
+    const theme = o.theme || GEN[(n * 7 + Math.floor(idx / 3)) % GEN.length];
     const size = Math.min(38, 30 + Math.floor(idx / 8));
     const h = size / 2;
     const MN = size >= 34 ? 7 : 5, cellW = size / MN; // 場地大就切更多格，岔路更多
@@ -1017,7 +1031,7 @@
     const used = new Set(runners.map((x) => x[0]));
     // 從池子挑一種：符合 fn 的物品裡，原尺寸最接近 want 的（放大倍率才不會太誇張）
     const take = (fn, want) => {
-      const c = pool.filter((p) => !used.has(p[0]) && fn(H.KINDS[p[0]].r))
+      const c = pool.filter((p) => !used.has(p[0]) && p[0] !== o.bossKind && fn(H.KINDS[p[0]].r))
         .sort((a, b) => Math.abs(Math.log(H.KINDS[a[0]].r / want)) - Math.abs(Math.log(H.KINDS[b[0]].r / want)));
       const p = c[0];
       if (p) used.add(p[0]);
@@ -1029,7 +1043,9 @@
     for (let k = 1; k < nt; k++) {
       const tr = boss && k === nt - 1 ? 1.95 : TIER_R[k];
       // 挑原尺寸接近這層的物品，再放大到目標半徑（最多放大 4 倍）
-      const p = take((r) => r <= tr * 1.1 && r >= tr / 4, tr / 1.8) || take((r) => r <= tr * 1.1, tr / 1.8);
+      const bp = boss && k === nt - 1 && o.bossKind ? pool.find((x) => x[0] === o.bossKind && !used.has(x[0])) : null;
+      if (bp) used.add(bp[0]);
+      const p = bp || take((r) => r <= tr * 1.1 && r >= tr / 4, tr / 1.8) || take((r) => r <= tr * 1.1, tr / 1.8);
       if (!p) break;
       tiers.push({ k, kinds: [{ p, s: Math.max(1, tr / H.KINDS[p[0]].r) }], r: tr });
     }
@@ -1265,6 +1281,25 @@
     return Object.assign({ seed: n * 1013 + 7, start: [0, 0] }, L);
   }
 
+  // 萬聖節活動：6 關，固定種子（每次產生都一樣）。難度約主線 5～15 關，第 6 關是南瓜頭目；夜晚關沿用既有 night 關型
+  const HALLOWEEN_THEME = { name: '萬聖夜', floor: 'spooky', pool: [['hcandy'], ['cookie'], ['jacko'], ['bat'], ['cupcake'], ['ghost'], ['barrel'], ['tomb'], ['crate'], ['cake', 'choc'], ['hay'], ['tree']] };
+  const HALLOWEEN_BOSS_POOL = [['hcandy'], ['cookie'], ['jacko'], ['bat'], ['cupcake'], ['ghost'], ['barrel'], ['tomb'], ['crate'], ['hay'], ['pumpkin']];
+  const HALLOWEEN_PLAN = [[5, 'normal'], [7, 'night'], [9, 'spin'], [11, 'order'], [13, 'maze'], [15, 'boss']];
+  const EVENT_LEVEL_COUNT = HALLOWEEN_PLAN.length;
+  const EVENT_CACHE = new Map();
+  function getEventLevel(i) {
+    i = Math.max(1, Math.min(EVENT_LEVEL_COUNT, i | 0));
+    if (!EVENT_CACHE.has(i)) {
+      const n = 200000 + i, [idx, mode] = HALLOWEEN_PLAN[i - 1];
+      const boss = mode === 'boss';
+      const theme = boss ? Object.assign({}, HALLOWEEN_THEME, { pool: HALLOWEEN_BOSS_POOL }) : HALLOWEEN_THEME;
+      const L = genLevel(n, { idx, mode, theme, bossKind: boss ? 'pumpkin' : null });
+      L.name = '萬聖節 ' + i + '・' + (boss ? '南瓜頭目' : L.name);
+      EVENT_CACHE.set(i, Object.assign({ seed: n * 1013 + 7, start: [0, 0] }, L));
+    }
+    return EVENT_CACHE.get(i);
+  }
+
   const SIM_CACHE = new Map();
   function getLevel(n) {
     const base = n <= LEVELS.length ? LEVELS[n - 1] : genLevel(n);
@@ -1282,5 +1317,5 @@
     return L;
   }
 
-  Object.assign(H, { rng, FLOORS, groundTexture, layout, hiddenGoals, getLevel, getDaily, simulate, checkReach, SPEED_K, LEVEL_COUNT: LEVELS.length });
+  Object.assign(H, { rng, FLOORS, groundTexture, layout, hiddenGoals, getLevel, getDaily, getEventLevel, EVENT_LEVEL_COUNT, simulate, checkReach, SPEED_K, LEVEL_COUNT: LEVELS.length });
 })();

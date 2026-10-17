@@ -53,6 +53,8 @@
     { id: 'night', name: '暗夜', gacha: true, color: 0x3b2f7a },
     // 星星寶箱限定：商店不能買、扭蛋也抽不到
     { id: 'starry', name: '星河', chest: true, anim: 'starry' },
+    // 萬聖節活動限定：只能在活動關卡拿到，活動結束後取得的仍保留
+    { id: 'pumpkin', name: '南瓜燈', event: 'halloween', anim: 'pumpkin' },
   ];
   // 吞噬特效：東西掉進洞時噴出的粒子（tile＝粒子貼圖格子：0 星 1 愛心 2 泡泡 3 方塊 4 光點 5 雪花 6 金幣 7 流星）
   const EAT_FX = [
@@ -65,7 +67,15 @@
     { id: 'snow', name: '雪花', gacha: true, tile: 5, colors: [0xffffff, 0xe1f5fe, 0xb3e5fc] },
     { id: 'coin', name: '金幣雨', gacha: true, tile: 6, colors: [0xffc928, 0xffe082] },
     { id: 'meteor', name: '流星', chest: true, tile: 7, colors: [0xfff3b0, 0x9be7ff, 0xffffff] },
+    { id: 'bat', name: '蝙蝠', event: 'halloween', tile: 8, colors: [0x8e5bd6, 0x4a3770, 0xff8f00] },
   ];
+  // 限時活動：期間以本地日期判斷（含頭尾）；網址加 ?event=halloween 可強制開啟（測試用）
+  const EVENTS = {
+    halloween: { id: 'halloween', name: '萬聖節活動', icon: '🎃', start: '2026-10-17', end: '2026-11-07', perLevel: 50, skin: 'pumpkin', fx: 'bat', starGoal: 18 },
+  };
+  const eventForced = (() => { try { return new URLSearchParams(location.search).get('event') === 'halloween'; } catch (e) { return false; } })();
+  // 七日簽到：第 3、5 天送 1 個已解鎖道具（沒有就換金幣），第 7 天 200 金幣＋一次免費扭蛋
+  const CHECKIN = [{ c: 30 }, { c: 40 }, { c: 50, boost: 1 }, { c: 60 }, { c: 80, boost: 1 }, { c: 100 }, { c: 200, gacha: true }];
   // 狂熱模式：連吃達 15 個進入 5 秒，黑洞範圍與可吞尺寸放大 20%，每吞一個 +1 金幣（整場最多 30）
   const FEVER_COMBO = 15, FEVER_DUR = 5, FEVER_SCALE = 1.2, FEVER_COIN_MAX = 30;
   // 每日任務：每天依日期種子抽 3 個不同類型；targets 由易到難，對應 MISSION_REWARD 的金幣
@@ -142,7 +152,7 @@
   function loadSave() {
     try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch (e) { return {}; }
   }
-  const SAVE_DEFAULTS = () => ({ level: 1, unlocked: 1, stars: {}, coins: 200, muted: false, speed: 1, ctrl: 'joy', bag: {}, granted: {}, skins: ['classic'], skin: 'classic', fxs: ['none'], fx: 'none', daily: {}, dex: {}, missions: null, chestsOpened: 0 });
+  const SAVE_DEFAULTS = () => ({ level: 1, unlocked: 1, stars: {}, coins: 200, muted: false, speed: 1, ctrl: 'joy', bag: {}, granted: {}, skins: ['classic'], skin: 'classic', fxs: ['none'], fx: 'none', daily: {}, dex: {}, missions: null, chestsOpened: 0, checkin: { last: '', day: 0 }, event: {}, challenges: {} });
   const save = Object.assign(SAVE_DEFAULTS(), loadSave());
   function persist() {
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* 無痕模式等情況忽略 */ }
@@ -167,7 +177,7 @@
   }
   // 舊網址（Netlify）：帶著存檔跳到新網址，新網址那邊自動匯入
   if (/\.netlify\.app$/.test(location.hostname)) {
-    location.replace(NEW_HOME + '#save=' + encodeURIComponent(saveCode()));
+    location.replace(NEW_HOME + location.search + '#save=' + encodeURIComponent(saveCode()));
     return;
   }
   A.setMuted(save.muted);
@@ -412,6 +422,29 @@
       x.arc(cx, cy, r * 0.6, 0, PI * 2);
       x.stroke();
     }
+    else if (tile === 8) {
+      // 蝙蝠剪影：身體＋兩隻尖耳＋左右對稱的翅膀（下緣三個弧形缺口）
+      x.ellipse(cx, cy + r * 0.05, r * 0.17, r * 0.3, 0, 0, PI * 2);
+      x.fill();
+      x.beginPath();
+      x.arc(cx, cy - r * 0.3, r * 0.15, 0, PI * 2);
+      x.fill();
+      [-1, 1].forEach((d) => {
+        x.beginPath();
+        x.moveTo(cx + d * r * 0.1, cy - r * 0.45);
+        x.lineTo(cx + d * r * 0.2, cy - r * 0.7);
+        x.lineTo(cx + d * r * 0.26, cy - r * 0.38);
+        x.fill();
+        x.beginPath();
+        x.moveTo(cx + d * r * 0.12, cy - r * 0.15);
+        x.quadraticCurveTo(cx + d * r * 0.55, cy - r * 0.85, cx + d * r, cy - r * 0.35);
+        x.quadraticCurveTo(cx + d * r * 0.88, cy - r * 0.05, cx + d * r * 0.78, cy + r * 0.12);
+        x.quadraticCurveTo(cx + d * r * 0.66, cy - r * 0.02, cx + d * r * 0.55, cy + r * 0.28);
+        x.quadraticCurveTo(cx + d * r * 0.42, cy + r * 0.04, cx + d * r * 0.28, cy + r * 0.32);
+        x.quadraticCurveTo(cx + d * r * 0.2, cy + r * 0.12, cx + d * r * 0.12, cy + r * 0.2);
+        x.fill();
+      });
+    }
     else if (tile === 7) {
       // 流星：右上亮點拖著往左下漸淡的尾巴
       const g = x.createLinearGradient(cx + r * 0.6, cy - r * 0.6, cx - r, cy + r);
@@ -432,9 +465,9 @@
   const fxAtlas = (() => {
     const c = document.createElement('canvas');
     c.width = 512;
-    c.height = 256;
+    c.height = 384;
     const x = c.getContext('2d');
-    for (let t = 0; t < 8; t++) drawShape(x, t, (t % 4) * 128 + 64, Math.floor(t / 4) * 128 + 64, 54, '#fff');
+    for (let t = 0; t < 9; t++) drawShape(x, t, (t % 4) * 128 + 64, Math.floor(t / 4) * 128 + 64, 54, '#fff');
     const tex = new T.CanvasTexture(c);
     tex.generateMipmaps = false;
     tex.minFilter = T.LinearFilter;
@@ -467,7 +500,7 @@
       void main() { vCol = col; vTile = tile; vec4 mv = modelViewMatrix * vec4(position, 1.0);
         gl_PointSize = size * scale / -mv.z; gl_Position = projectionMatrix * mv; }`,
     fragmentShader: `uniform sampler2D map; varying vec4 vCol; varying float vTile;
-      void main() { vec2 uv = vec2((mod(vTile, 4.0) + gl_PointCoord.x) / 4.0, 1.0 - (floor(vTile / 4.0) + gl_PointCoord.y) / 2.0);
+      void main() { vec2 uv = vec2((mod(vTile, 4.0) + gl_PointCoord.x) / 4.0, 1.0 - (floor(vTile / 4.0) + gl_PointCoord.y) / 3.0);
         vec4 t = texture2D(map, uv); float a = t.a * vCol.a; if (a < 0.03) discard; gl_FragColor = vec4(vCol.rgb * t.rgb, a); }`,
     transparent: true, depthWrite: false,
   });
@@ -524,6 +557,7 @@
         case 'bubble': out = rnd(0.5, 1.5); up = rnd(1.5, 3); p.g = -0.6; p.drag = 1; p.max = 1.2; p.s = rnd(0.25, 0.6); break;
         case 'pixel': out = rnd(3, 5); up = rnd(5, 8); p.g = 20; p.max = 0.8; p.s = rnd(0.18, 0.3); break;
         case 'snow': out = rnd(1, 2); up = rnd(2, 4); p.g = 1.5; p.drag = 2; p.max = 1.3; p.s = rnd(0.3, 0.5); break;
+        case 'bat': out = rnd(1.5, 3.5); up = rnd(3, 6); p.g = 2; p.drag = 1.2; p.max = 1.1; p.s = rnd(0.4, 0.6); break;
         case 'coin': out = rnd(1, 2); up = rnd(6, 9); p.g = 18; p.max = 0.9; p.s = rnd(0.35, 0.45); break;
         case 'meteor': out = rnd(2.5, 5); up = rnd(3, 6); p.g = 12; p.drag = 0.6; p.max = 0.85; p.s = rnd(0.45, 0.7); break;
         default: { // firework：在洞口上方炸成一顆球
@@ -725,10 +759,15 @@
 
   function buildLevel(n) {
     disposeWorld();
-    const daily = n === 'daily';
-    const L = daily ? H.getDaily(todayNum()) : H.getLevel(n);
-    G.daily = daily ? todayKey() : null;
-    G.n = daily ? 999 : n; // 每日挑戰：道具全開，不影響一般關卡進度
+    // n：關卡號、'daily'（今天的每日挑戰）、'daily:YYYY-MM-DD'（朋友連結指定日期）、'ev:halloween:N'（活動關）
+    const ev = typeof n === 'string' && n.startsWith('ev:') ? n.split(':') : null;
+    const daily = typeof n === 'string' && n.startsWith('daily');
+    const dayKey = daily ? (n.length > 6 ? n.slice(6) : todayKey()) : null;
+    const L = ev ? H.getEventLevel(+ev[2]) : daily ? H.getDaily(Math.floor(Date.parse(dayKey + 'T00:00:00Z') / 86400000)) : H.getLevel(n);
+    G.ref = n;
+    G.daily = dayKey;
+    G.event = ev ? { id: ev[1], i: +ev[2] } : null;
+    G.n = daily || ev ? 999 : n; // 每日挑戰、活動關：道具全開，不影響一般關卡進度
     G.L = L;
     const floor = H.FLOORS[L.floor];
     world = new T.Group();
@@ -1182,6 +1221,7 @@
       if (sk.anim === 'rainbow') rim.material.color.setHSL((G.t * 0.15) % 1, 0.85, 0.6);
       else if (sk.anim === 'fire') rim.material.color.setHSL(0.06 + Math.sin(G.t * 5) * 0.03, 1, 0.55);
       else if (sk.anim === 'starry') rim.material.color.setHSL(0.64 + 0.1 * Math.sin(G.t * 1.6), 0.85, 0.64);
+      else if (sk.anim === 'pumpkin') rim.material.color.setHSL(0.075 + 0.025 * Math.sin(G.t * 9) * Math.sin(G.t * 5.3), 1, 0.5 + 0.1 * Math.sin(G.t * 13 + 1));
       else if (sk.anim === 'neon') rim.material.color.setHSL(0.5 + 0.33 * (0.5 + 0.5 * Math.sin(G.t * 2.5)), 1, 0.6);
       else rim.material.color.set(sk.color);
     }
@@ -2236,7 +2276,10 @@
     const final = G.score + timeBonus;
     missionBump('clear', 1);
     if (stars >= 3) missionBump('star3', 1);
+    if (G.challenge) return winChallenge(stars, final);
+    if (G.event) return winEvent(stars, final, timeBonus);
     if (G.daily) return winDaily(stars, final, timeBonus);
+    G.share = { id: String(G.n), t: Math.ceil(G.time), s: final, label: `第 ${G.n} 關` };
     save.comp = save.comp || {};
     const comp = !save.comp[G.n] && COMPENSATE[G.n] || 0;
     if (comp) {
@@ -2276,13 +2319,15 @@
             <button class="big-btn ghost" data-act="retry">再玩一次</button>
             <button class="big-btn ghost" data-act="menu">主選單</button>
           </div>
+          <button class="big-btn ghost share-btn" data-act="share">📤 挑戰朋友</button>
+          <div class="shop-msg good" id="shareMsg"></div>
         </div>`);
       starBurst();
       setTimeout(() => { setCoins(save.coins, true); A.coin(); }, 700);
     }, 1100);
   }
 
-  const lvLabel = () => (G.daily ? `每日挑戰・${G.daily.slice(5).replace('-', '/')}` : `第 ${G.n} 關`);
+  const lvLabel = () => (G.event ? `🎃 萬聖節活動・第 ${G.event.i} 關` : G.daily ? `每日挑戰・${G.daily.slice(5).replace('-', '/')}` : `第 ${G.n} 關`);
 
   // 每日挑戰過關：每天第一次過關多送 100 金幣，不動一般關卡進度
   function winDaily(stars, final, timeBonus) {
@@ -2293,6 +2338,7 @@
     save.coins += reward;
     persist();
     missionBump('daily', 1);
+    G.share = { id: 'd-' + G.daily, t: Math.ceil(G.time), s: final, label: '每日挑戰' };
     A.win();
     banner('完成！');
     confetti(stars >= 3 ? 90 : 60);
@@ -2312,6 +2358,8 @@
             <button class="big-btn ghost" data-act="retry">再玩一次</button>
             <button class="big-btn ghost" data-act="menu">主選單</button>
           </div>
+          <button class="big-btn ghost share-btn" data-act="share">📤 挑戰朋友</button>
+          <div class="shop-msg good" id="shareMsg"></div>
         </div>`);
       starBurst();
       setTimeout(() => { setCoins(save.coins, true); A.coin(); }, 700);
@@ -2356,7 +2404,7 @@
     el.classList.add('nope');
   }
   function priceTag(own, on, item) {
-    return on ? '使用中' : own ? '使用' : item.chest ? '🔒 星星寶箱限定' : item.gacha ? '扭蛋限定' : `<i class="coin"></i>${item.price}`;
+    return on ? '使用中' : own ? '使用' : item.event ? '🎃 萬聖節活動限定' : item.chest ? '🔒 星星寶箱限定' : item.gacha ? '扭蛋限定' : `<i class="coin"></i>${item.price}`;
   }
   function shopModal(tab) {
     shopTab = tab || shopTab;
@@ -2368,15 +2416,16 @@
         const sw = k.anim === 'rainbow' ? 'conic-gradient(#f44,#fc3,#4c4,#3cf,#a4f,#f44)'
           : k.anim === 'fire' ? 'radial-gradient(#ffd54f,#ff7043 60%,#d32f2f)'
           : k.anim === 'neon' ? 'linear-gradient(135deg,#22d3ee,#e879f9)'
-          : k.anim === 'starry' ? 'linear-gradient(135deg,#4f6bff,#b36bff)' : hex(k.color);
-        return `<button class="skin${on ? ' on' : ''}${k.gacha && !own ? ' rare' : ''}${k.chest && !own ? ' chestlock' : ''}" data-act="skin" data-skin="${k.id}">
+          : k.anim === 'starry' ? 'linear-gradient(135deg,#4f6bff,#b36bff)'
+          : k.anim === 'pumpkin' ? 'radial-gradient(#ffee58,#ff8f00 55%,#6a1b9a)' : hex(k.color);
+        return `<button class="skin${on ? ' on' : ''}${k.gacha && !own ? ' rare' : ''}${k.chest && !own ? ' chestlock' : ''}${k.event && !own ? ' eventlock' : ''}" data-act="skin" data-skin="${k.id}">
           <i class="sw" style="background:${sw}"></i><span>${k.name}</span><small>${priceTag(own, on, k)}</small></button>`;
       }).join('')}</div>`;
     } else if (shopTab === 'fx') {
       body = `<div class="m-note">東西掉進黑洞時噴出來的效果</div>
       <div class="skin-grid">${EAT_FX.map((f) => {
         const own = (save.fxs || ['none']).includes(f.id), on = (save.fx || 'none') === f.id;
-        return `<button class="skin${on ? ' on' : ''}${f.gacha && !own ? ' rare' : ''}${f.chest && !own ? ' chestlock' : ''}" data-act="fx" data-fx="${f.id}">
+        return `<button class="skin${on ? ' on' : ''}${f.gacha && !own ? ' rare' : ''}${f.chest && !own ? ' chestlock' : ''}${f.event && !own ? ' eventlock' : ''}" data-act="fx" data-fx="${f.id}">
           <i class="fx-ic"><img src="${fxIcon(f)}" alt=""></i><span>${f.name}</span><small>${priceTag(own, on, f)}</small></button>`;
       }).join('')}</div>`;
     } else {
@@ -2449,6 +2498,15 @@
     }, 900);
   }
 
+  // 失敗畫面：未完成目標的進度條，加上「只差一點」的提示；整體完成度 >= 70% 時讓「繼續」按鈕跳動
+  function nearMiss() {
+    const open = G.goals.filter((g) => g.got < g.need);
+    const ratio = G.goals.length ? G.goals.reduce((t, g) => t + Math.min(1, g.got / g.need), 0) / G.goals.length : 0;
+    let best = null;
+    for (const g of open) if (!best || g.got / g.need > best.got / best.need) best = g;
+    return { open, ratio, best };
+  }
+
   function lose() {
     G.state = 'lost';
     stopFever();
@@ -2458,18 +2516,25 @@
     A.lose();
     vibrate(200);
     const can = save.coins >= CONTINUE_COST;
+    const { open, ratio, best } = nearMiss();
+    const left = best ? best.need - best.got : 0;
+    const hint = best ? (best.kind === 'star' ? `還差 ${left} 點！` : `只差 ${left} 個！`) : '';
     showModal(`
       <div class="m-kicker">${lvLabel()}</div>
       <h2>挑戰失敗！</h2>
       <div class="m-note">時間到了</div>
       <div class="m-note">本局 ${G.score} 分</div>
-      <div class="progress-list">${G.goals.map((g) => `<div><img src="${g.img}" alt="">${g.got}/${g.need}</div>`).join('')}</div>
+      ${hint ? `<div class="near-hint">${best.kind === 'star' ? '' : `<img src="${best.img}" alt="">`}<b>${hint}</b></div>` : ''}
+      <div class="near-list">${open.map((g) => {
+        const pct = Math.min(100, (g.got / g.need) * 100);
+        return `<div class="near-row${g === best ? ' best' : ''}"><img src="${g.img}" alt=""><div class="near-bar"><i style="width:${pct.toFixed(1)}%"></i><b>${g.got}/${g.need}</b></div></div>`;
+      }).join('')}</div>
       <div class="coin-pill shop-coins lose-coins"><i class="coin"></i><span>${save.coins}</span></div>
       ${can ? '' : `<div class="m-note">金幣不足 ${CONTINUE_COST}，無法繼續</div>`}
       <div class="m-btns">
         <button class="big-btn" data-act="retry">再試一次</button>
         <div class="m-row">
-          <button class="big-btn ghost" data-act="continue" ${can ? '' : 'disabled'}>+30 秒繼續 <small><i class="coin"></i>${CONTINUE_COST}</small></button>
+          <button class="big-btn ghost${ratio >= 0.7 ? ' beat' : ''}" data-act="continue" ${can ? '' : 'disabled'}>+30 秒繼續 <small><i class="coin"></i>${CONTINUE_COST}</small></button>
           <button class="big-btn ghost" data-act="menu">主選單</button>
         </div>
       </div>`);
@@ -2488,8 +2553,8 @@
       G.state = 'playing';
       clock.getDelta();
     },
-    retry() { startLevel(G.daily ? 'daily' : G.n, true); },
-    next() { startLevel(G.n + 1, false); },
+    retry() { startLevel(G.ref, true, G.challenge); },
+    next() { startLevel(G.event ? evRef(G.event.id, G.event.i + 1) : G.n + 1, false); },
     pre(btn) {
       const k = btn.dataset.pre;
       if (!preOk(k)) return;
@@ -2510,6 +2575,7 @@
       const f = fxOf(btn.dataset.fx);
       save.fxs = save.fxs || ['none'];
       if (!save.fxs.includes(f.id)) {
+        if (f.event) return shopMsg(eventHowTo(f));
         if (f.chest) return shopMsg('這款要集滿星星、開星星寶箱才拿得到');
         if (f.gacha) return shopMsg('這款只能從扭蛋抽到');
         if (save.coins < f.price) return shopMsg('金幣不夠');
@@ -2527,6 +2593,7 @@
       const k = skinOf(btn.dataset.skin);
       save.skins = save.skins || ['classic'];
       if (!save.skins.includes(k.id)) {
+        if (k.event) return shopMsg(eventHowTo(k));
         if (k.chest) return shopMsg('這款要集滿星星、開星星寶箱才拿得到');
         if (k.gacha) return shopMsg('這款只能從扭蛋抽到');
         if (save.coins < k.price) return shopMsg('金幣不夠');
@@ -2590,14 +2657,18 @@
   });
 
   // ---------- 流程 ----------
-  function startLevel(n, quick) {
+  function startLevel(n, quick, challenge) {
     A.unlock();
+    G.challenge = challenge || null;
+    G.share = null;
     closeModal();
     $('menu').classList.add('hidden');
     $('fx').innerHTML = '';
     buildLevel(n);
     $('hud').classList.remove('hidden');
-    $('hudLevelTag').innerHTML = n === 'daily' ? '每日挑戰' : `第 <span id="hudLevel">${n}</span> 關`;
+    $('hudLevelTag').innerHTML = G.event ? `🎃 活動第 ${G.event.i} 關` : G.daily ? '每日挑戰' : `第 <span id="hudLevel">${n}</span> 關`;
+    $('hudChallenge').textContent = challenge ? `挑戰：剩 ${challenge.t} 秒` : '';
+    $('hudChallenge').classList.toggle('hidden', !challenge);
     $('hudScore').textContent = 0;
     showTimer();
     $('dragHint').classList.remove('off');
@@ -2605,7 +2676,7 @@
     $('dragHint').querySelector('span').textContent = save.ctrl === 'drag' ? '按住拖曳，移動黑洞' : '按住往想去的方向推';
     joyEnd();
     renderGoals();
-    grantBoosters();
+    if (challenge) G.newBoost = []; else grantBoosters(); // 朋友挑戰不送道具、不動存檔進度
     setCoins(save.coins);
     G.state = 'intro';
     updateCamera(0, true);
@@ -2644,6 +2715,7 @@
     $('hudCoins').textContent = save.coins;
     stopFever();
     updateMenuBadges();
+    $('btnEvent').classList.toggle('hidden', !eventActive('halloween'));
     $('btnDaily').textContent = save.daily && save.daily[todayKey()] ? '📅 今日已完成 ✓' : '📅 每日挑戰';
     renderLevelGrid();
     updateSoundBtn();
@@ -2696,11 +2768,11 @@
   }
 
   // 短提示：不打斷遊戲，停幾秒就消失
-  function toast(text) {
+  function toast(text, overModal) {
     const el = document.createElement('div');
-    el.className = 'toast';
+    el.className = 'toast' + (overModal ? ' over' : '');
     el.textContent = text;
-    $('fx').appendChild(el);
+    (overModal ? document.body : $('fx')).appendChild(el);
     el.addEventListener('animationend', () => el.remove());
   }
 
@@ -2840,6 +2912,7 @@
   function updateMenuBadges() {
     if (!$('missionDot')) return;
     $('missionDot').classList.toggle('hidden', !missionClaimable());
+    $('checkinDot').classList.toggle('hidden', !checkinCan());
     const o = save.chestsOpened | 0, s = totalStars(), ms = chestMs(o), ready = chestReady();
     $('chestText').textContent = `★ ${Math.min(s, ms)} / ${ms}`;
     $('chestFill').style.width = Math.min(100, (s / ms) * 100) + '%';
@@ -2908,6 +2981,270 @@
   });
   $('btnMissions').addEventListener('click', () => { A.unlock(); A.click(); missionModal(); });
   $('btnChest').addEventListener('click', () => { A.unlock(); A.click(); chestModal(); });
+
+  // ---------- 限時活動（萬聖節） ----------
+  const evRef = (id, i) => `ev:${id}:${i}`;
+  const dateNum = (key) => Math.floor(Date.parse(key + 'T00:00:00Z') / 86400000);
+  const eventActive = (id) => {
+    const e = EVENTS[id], t = todayKey();
+    return !!e && ((t >= e.start && t <= e.end) || (eventForced && id === 'halloween'));
+  };
+  const eventDaysLeft = (id) => Math.max(0, dateNum(EVENTS[id].end) - todayNum() + 1);
+  function evSave(id) {
+    if (!save.event || typeof save.event !== 'object') save.event = {};
+    const e = save.event[id] = save.event[id] || {};
+    e.stars = e.stars || {};
+    return e;
+  }
+  const evStars = (id) => Object.values(evSave(id).stars).reduce((t, v) => t + (+v || 0), 0);
+  const evCleared = (id) => { const st = evSave(id).stars; let n = 0; for (let i = 1; i <= H.EVENT_LEVEL_COUNT; i++) if (st[i]) n++; return n; };
+  // 依序解鎖：第一個還沒過的關卡（全過了就是最後一關）
+  const evUnlocked = (id) => { const st = evSave(id).stars; let i = 1; while (i < H.EVENT_LEVEL_COUNT && st[i]) i++; return i; };
+  function eventHowTo(item) {
+    const cfg = EVENTS[item.event];
+    const how = item.id === cfg.skin ? `萬聖節活動 ${H.EVENT_LEVEL_COUNT} 關全部通關` : `萬聖節活動 ${H.EVENT_LEVEL_COUNT} 關總星數達 ${cfg.starGoal}★`;
+    return eventActive(item.event) ? `這款要在「🎃 萬聖節活動」拿：${how}` : '這款是萬聖節活動限定，活動已結束';
+  }
+
+  function eventModal() {
+    const id = 'halloween', cfg = EVENTS[id], st = evSave(id).stars, un = evUnlocked(id), n = H.EVENT_LEVEL_COUNT;
+    const cleared = evCleared(id), stars = evStars(id);
+    const ownSkin = (save.skins || []).includes(cfg.skin), ownFx = (save.fxs || []).includes(cfg.fx);
+    const grid = Array.from({ length: n }, (_, k) => {
+      const i = k + 1, boss = i === n;
+      if (i > un) return `<button class="ev-lv locked" disabled>${LOCK}</button>`;
+      return `<button class="ev-lv${boss ? ' boss' : ''}${i === un && !st[i] ? ' cur' : ''}" data-act="evPlay" data-i="${i}"><b>${boss ? '🎃' : i}</b><span class="st">${[1, 2, 3].map((q) => `<span class="${q <= (st[i] || 0) ? 'on' : ''}">★</span>`).join('')}</span></button>`;
+    }).join('');
+    const days = eventDaysLeft(id), forcedOnly = eventForced && !(todayKey() >= cfg.start && todayKey() <= cfg.end);
+    showModal(`
+      <h2 class="ev-title">🎃 萬聖節活動</h2>
+      <div class="m-note">${forcedOnly ? '（測試模式）' : `活動剩 <b>${days}</b> 天（到 ${cfg.end.slice(5).replace('-', '/')}）`}・依序通關，不影響主線進度</div>
+      <div class="ev-grid">${grid}</div>
+      <div class="m-sec">活動獎勵</div>
+      <div class="chest-list ev-rewards">
+        <div class="${cleared >= n ? 'ok' : ''}"><b>每關首次</b>過關 +${cfg.perLevel} 金幣（${cleared}/${n} 關）</div>
+        <div class="${ownSkin ? 'ok' : ''}"><b>${n} 關全過</b>限定外框「${skinOf(cfg.skin).name}」${ownSkin ? '　✓ 已取得' : `（${cleared}/${n}）`}</div>
+        <div class="${ownFx ? 'ok' : ''}"><b>${cfg.starGoal}★</b>限定吞噬特效「${fxOf(cfg.fx).name}」${ownFx ? '　✓ 已取得' : `（${Math.min(stars, cfg.starGoal)}/${cfg.starGoal}★）`}</div>
+      </div>
+      <div class="m-note">活動關卡可重玩刷星數；活動結束後，已取得的獎勵會保留</div>
+      <div class="m-btns"><button class="big-btn" data-act="close">關閉</button></div>`);
+  }
+
+  function winEvent(stars, final, timeBonus) {
+    const id = G.event.id, i = G.event.i, cfg = EVENTS[id], ev = evSave(id), n = H.EVENT_LEVEL_COUNT;
+    const first = !ev.stars[i];
+    ev.stars[i] = Math.max(ev.stars[i] || 0, stars);
+    const got = [];
+    save.skins = save.skins || ['classic'];
+    save.fxs = save.fxs || ['none'];
+    if (evCleared(id) >= n && !save.skins.includes(cfg.skin)) { save.skins.push(cfg.skin); got.push(`限定外框「${skinOf(cfg.skin).name}」`); }
+    if (evStars(id) >= cfg.starGoal && !save.fxs.includes(cfg.fx)) { save.fxs.push(cfg.fx); got.push(`限定吞噬特效「${fxOf(cfg.fx).name}」`); }
+    const reward = 20 + stars * 15 + (first ? cfg.perLevel : 0);
+    save.coins += reward; // 獎勵跟著過關一起存檔，動畫只負責顯示
+    persist();
+    const last = i >= n;
+    A.win();
+    banner('完成！');
+    confetti(stars >= 3 ? 90 : 60);
+    vibrate([30, 50, 30]);
+    setTimeout(() => {
+      if (G.state !== 'won') return;
+      showModal(`
+        <div class="m-kicker">${lvLabel()}</div>
+        <h2>${last ? '南瓜頭目被吞掉了！' : '過關！'}</h2>
+        <div class="stars">${[1, 2, 3].map((q) => STAR.replace('<svg', `<svg class="${q <= stars ? 'on' : ''}"`)).join('')}</div>
+        <div class="final-score">${final}<small>分</small></div>
+        <div class="m-note">吃到 ${G.score} 分 ＋ 剩餘 ${Math.ceil(G.time)} 秒加分 ${timeBonus}</div>
+        ${first ? `<div class="m-note"><b class="record">首次過關 +${cfg.perLevel} 金幣！</b></div>` : ''}
+        ${got.map((t) => `<div class="m-note"><b class="record">🎃 解鎖${t}！到商店換上</b></div>`).join('')}
+        <div class="reward">+${reward} <i class="coin"></i></div>
+        <div class="m-btns">
+          <button class="big-btn" data-act="${last ? 'evBack' : 'next'}">${last ? '回活動頁' : '下一關'}</button>
+          <div class="m-row">
+            <button class="big-btn ghost" data-act="retry">再玩一次</button>
+            <button class="big-btn ghost" data-act="menu">主選單</button>
+          </div>
+        </div>`);
+      setTimeout(() => { setCoins(save.coins, true); A.coin(); }, 700);
+    }, 1100);
+  }
+
+  // ---------- 七日簽到 ----------
+  const yesterdayKey = () => new Date((todayNum() - 1) * 86400000).toISOString().slice(0, 10);
+  function checkinInfo() {
+    if (!save.checkin || typeof save.checkin !== 'object') save.checkin = { last: '', day: 0 };
+    const c = save.checkin, day = (c.day | 0) % 7;
+    // can：今天還沒簽；idx：今天要領（或今天已領）的是第幾天（0 起算）
+    if (c.last === todayKey()) return { can: false, idx: (day + 6) % 7 };
+    return { can: true, idx: c.last === yesterdayKey() ? day : 0 };
+  }
+  const checkinCan = () => checkinInfo().can;
+  function checkinRewardText(r) {
+    if (r.boost && unlockedBoosts().length) return '<span class="ck-ic">🎁</span>道具×1';
+    if (r.gacha) return '<span class="ck-ic">🎰</span>扭蛋＋<i class="coin"></i>' + r.c;
+    return '<span class="ck-ic"><i class="coin"></i></span>' + r.c;
+  }
+  function checkinModal(msg) {
+    const { can, idx } = checkinInfo();
+    const cards = CHECKIN.map((r, i) => {
+      const done = i < idx || (i === idx && !can);
+      return `<div class="ck${done ? ' done' : ''}${i === idx && can ? ' today' : ''}${r.gacha ? ' big' : ''}"><small>第 ${i + 1} 天</small><b>${checkinRewardText(r)}</b>${done ? '<em>✓</em>' : ''}</div>`;
+    }).join('');
+    showModal(`
+      <h2>七日簽到</h2>
+      <div class="coin-pill shop-coins"><i class="coin"></i><span>${save.coins}</span></div>
+      <div class="m-note">每天簽到一次，連續簽滿 7 天有大獎；中斷會從第 1 天重來</div>
+      <div class="ck-grid">${cards}</div>
+      <div class="chest-out" id="ckOut">${msg || (can ? '今天還沒簽到！' : '今天已簽到，明天再來')}</div>
+      <div class="m-btns">
+        <button class="big-btn purple" data-act="ckClaim" ${can ? '' : 'disabled'}>${can ? '簽到領獎' : '今天已簽到'}</button>
+        <button class="big-btn ghost" data-act="close">關閉</button>
+      </div>`);
+  }
+
+  // ---------- 挑戰好友連結 ----------
+  const CH_MAX_LEVEL = 1000;
+  const chLabel = (ch) => (ch.kind === 'daily' ? `每日挑戰 ${ch.date.slice(5).replace('-', '/')}` : `第 ${ch.n} 關`);
+  // 解析網址的 ?challenge=…&t=…&s=…；順便把這三個參數從網址拿掉（其他參數如 ?level、?event 原樣保留）
+  function takeChallengeParams() {
+    let sp;
+    try { sp = new URLSearchParams(location.search); } catch (e) { return null; }
+    if (!sp.has('challenge')) return null;
+    const raw = sp.get('challenge'), t = sp.get('t'), sc = sp.get('s');
+    ['challenge', 't', 's'].forEach((k) => sp.delete(k));
+    try {
+      const q = sp.toString();
+      history.replaceState(null, '', location.pathname + (q ? '?' + q : '') + location.hash);
+    } catch (e) { /* 忽略 */ }
+    const nt = /^\d{1,3}$/.test(t || '') ? +t : -1, ns = /^\d{1,8}$/.test(sc || '') ? +sc : -1;
+    if (nt < 0 || ns < 0) return null;
+    let ch = null;
+    if (/^\d{1,4}$/.test(raw)) {
+      const n = +raw;
+      if (n >= 1 && n <= CH_MAX_LEVEL) ch = { kind: 'lv', n, ref: n };
+    } else {
+      const m = /^d-(\d{4}-\d{2}-\d{2})$/.exec(raw);
+      if (m) {
+        const d = dateNum(m[1]);
+        if (!isNaN(d) && new Date(d * 86400000).toISOString().slice(0, 10) === m[1] && Math.abs(d - todayNum()) <= 800) ch = { kind: 'daily', date: m[1], ref: 'daily:' + m[1] };
+      }
+    }
+    if (!ch) return null;
+    return Object.assign(ch, { id: raw, t: nt, s: ns, key: `${raw}|${nt}|${ns}` });
+  }
+  let pendingChallenge = null;
+  function challengeModal(ch) {
+    pendingChallenge = ch;
+    showModal(`
+      <div class="m-kicker">⚔️ 好友挑戰</div>
+      <h2>打敗他！</h2>
+      <div class="m-note">朋友在<b>${chLabel(ch)}</b>剩 <b>${ch.t}</b> 秒過關（<b>${ch.s}</b> 分）</div>
+      <div class="m-note">${ch.kind === 'lv' ? '不管你有沒有解鎖這關都能玩，這局不會影響你的主線進度和紀錄' : '這局不會影響你自己的每日挑戰紀錄'}・贏了拿 50 金幣</div>
+      <div class="m-btns">
+        <button class="big-btn" data-act="chAccept">接受挑戰</button>
+        <button class="big-btn ghost" data-act="close">先不要</button>
+      </div>`);
+  }
+
+  function winChallenge(stars, final) {
+    const ch = G.challenge, left = Math.ceil(G.time), won = left > ch.t;
+    G.share = { id: ch.id, t: left, s: final, label: chLabel(ch) };
+    save.challenges = save.challenges || {};
+    const bonus = won && !save.challenges[ch.key] ? 50 : 0;
+    if (bonus) { save.challenges[ch.key] = 1; save.coins += bonus; }
+    persist();
+    if (won) { A.win(); confetti(60); } else A.levelUp();
+    banner(won ? '挑戰成功！' : '完成！');
+    vibrate([30, 50, 30]);
+    setTimeout(() => {
+      if (G.state !== 'won') return;
+      const diff = ch.t - left;
+      showModal(`
+        <div class="m-kicker">${lvLabel()}・好友挑戰</div>
+        <h2>${won ? '挑戰成功！' : diff > 0 ? `差 ${diff} 秒，再試一次？` : '平手！差 1 秒就贏了，再試一次？'}</h2>
+        <div class="final-score">${final}<small>分</small></div>
+        <div class="m-note">你剩 <b>${left}</b> 秒・朋友剩 <b>${ch.t}</b> 秒（${ch.s} 分）</div>
+        ${bonus ? '<div class="reward">+50 <i class="coin"></i></div>' : won ? '<div class="m-note">這個挑戰的獎勵已經領過了</div>' : ''}
+        <div class="m-btns">
+          <button class="big-btn${won ? ' ghost' : ''}" data-act="retry">${won ? '再玩一次' : '再試一次'}</button>
+          <button class="big-btn ghost share-btn" data-act="share">📤 回嗆朋友</button>
+          <button class="big-btn ghost" data-act="menu">主選單</button>
+          <div class="shop-msg good" id="shareMsg"></div>
+        </div>`);
+      if (bonus) setTimeout(() => { setCoins(save.coins, true); A.coin(); }, 700);
+    }, 1100);
+  }
+
+  function copyText(text, done) {
+    const legacy = () => {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;left:-999px;top:0;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { /* 忽略 */ }
+      ta.remove();
+      if (ok) done();
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, legacy);
+    else legacy();
+  }
+  function shareChallenge() {
+    const sh = G.share;
+    if (!sh) return;
+    const base = location.href.split(/[?#]/)[0];
+    const url = `${base}?challenge=${encodeURIComponent(sh.id)}&t=${sh.t}&s=${sh.s}`;
+    const text = `我在${sh.label}剩 ${sh.t} 秒過關，你能贏我嗎？`;
+    const copied = () => {
+      toast('已複製挑戰連結', true);
+      const m = $('shareMsg');
+      if (m) m.textContent = '已複製挑戰連結';
+    };
+    if (navigator.share) {
+      navigator.share({ title: '黑洞吞吞挑戰', text, url }).catch((err) => { if (!err || err.name !== 'AbortError') copyText(url, copied); });
+    } else copyText(url, copied);
+  }
+
+  Object.assign(actions, {
+    evPlay(btn) {
+      const i = +btn.dataset.i;
+      if (!eventActive('halloween') || !(i >= 1 && i <= evUnlocked('halloween'))) return;
+      startLevel(evRef('halloween', i), false);
+    },
+    evBack() { showMenu(); eventModal(); },
+    ckClaim(btn) {
+      const info = checkinInfo();
+      if (!info.can) return;
+      const r = CHECKIN[info.idx], from = btn.getBoundingClientRect();
+      save.checkin = { last: todayKey(), day: (info.idx + 1) % 7 };
+      let html;
+      const ks = r.boost ? unlockedBoosts() : [];
+      if (ks.length) {
+        const k = ks[Math.floor(Math.random() * ks.length)];
+        save.bag[k] = (save.bag[k] || 0) + 1;
+        html = `${BOOST[k].icon} ${BOOST[k].name} ×1`;
+      } else {
+        save.coins += r.c;
+        html = `<b>${r.c}</b> <i class="coin"></i> 金幣`;
+        if (r.gacha) html += '<br>免費扭蛋：' + rollGacha().html;
+      }
+      setCoins(save.coins, true); // 同時存檔
+      A.win();
+      vibrate([20, 30, 20]);
+      checkinModal('簽到成功！獲得 ' + html);
+      if (!ks.length) flyCoins(from, document.querySelector('.shop-coins'), 8);
+    },
+    chAccept() {
+      const ch = pendingChallenge;
+      if (!ch) return;
+      pendingChallenge = null;
+      startLevel(ch.ref, false, ch);
+    },
+    share() { shareChallenge(); },
+  });
+  $('btnEvent').addEventListener('click', () => { A.unlock(); A.click(); eventModal(); });
+  $('btnCheckin').addEventListener('click', () => { A.unlock(); A.click(); checkinModal(); });
 
   // ---------- 版本（由 deploy.mjs 發佈時自動寫入 index.html） ----------
   const VERSION = 'v' + (document.documentElement.dataset.version || '?');
@@ -2987,6 +3324,8 @@
       } else confirmImport(data);
     }
   }
+  // 好友挑戰連結：?challenge=關卡號（或 d-YYYY-MM-DD）&t=剩餘秒數&s=分數；處理完會把這三個參數從網址拿掉
+  const bootChallenge = takeChallengeParams();
   // 測試用：網址加 ?level=N 直接開第 N 關（同時解鎖到該關）
   const testLv = parseInt(new URLSearchParams(location.search).get('level'), 10);
   if (testLv >= 1) {
@@ -2994,9 +3333,13 @@
     save.level = testLv;
     persist();
     startLevel(testLv, false);
+  } else if (bootChallenge) {
+    challengeModal(bootChallenge);
+  } else if ($('modal').classList.contains('hidden') && checkinCan()) {
+    checkinModal(); // 每天第一次開遊戲自動跳出簽到
   }
   frame();
 
   // 除錯 / 自動測試用
-  window.__hole = { G, hole, save, startLevel, camera, renderer, scene };
+  window.__hole = { G, hole, save, startLevel, camera, renderer, scene, win, lose };
 })();
