@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-Hant" data-version="1.23" data-build="2026/10/17 13:53">
+<html lang="zh-Hant" data-version="1.24" data-build="2026/10/17 13:54">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
@@ -15,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=1.23">
+  <link rel="stylesheet" href="css/style.css?v=1.24">
 </head>
 <body>
   <canvas id="game"></canvas>
@@ -34,7 +34,10 @@
           <div class="time-track"><div id="timeBar"></div></div>
         </div>
       </div>
-      <div class="score-pill"><span id="hudScore">0</span> 分</div>
+      <div class="hud-side">
+        <div class="score-pill"><span id="hudScore">0</span> 分</div>
+        <div class="score-pill hud-coins" id="hudCoinsPill"><i class="coin"></i><span id="hudCoins">0</span></div>
+      </div>
     </div>
     <div class="goals" id="hudGoals"></div>
     <div class="size-label hidden" id="sizeLabel">等級 1</div>
@@ -90,10 +93,10 @@
     <p>請把手機轉回直向遊玩</p>
   </div>
 
-  <script src="js/vendor/three.min.js?v=1.23"></script>
-  <script src="js/audio.js?v=1.23"></script>
-  <script src="js/objects.js?v=1.23"></script>
-  <script src="js/levels.js?v=1.23"></script>
-  <script src="js/game.js?v=1.23"></script>
+  <script src="js/vendor/three.min.js?v=1.24"></script>
+  <script src="js/audio.js?v=1.24"></script>
+  <script src="js/objects.js?v=1.24"></script>
+  <script src="js/levels.js?v=1.24"></script>
+  <script src="js/game.js?v=1.24"></script>
 </body>
 </html>
