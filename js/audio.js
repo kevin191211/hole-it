@@ -86,6 +86,7 @@
     },
     boost() { tone(500, 0.25, 'triangle', 0.2, 1400); },
     levelUp() { [660, 880, 1175].forEach((f, i) => tone(f, 0.16, 'triangle', 0.2, null, i * 0.07)); },
+    fever() { [392, 523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.2, 'sawtooth', 0.14, f * 1.25, i * 0.05)); },
     go() {
       tone(660, 0.12, 'triangle', 0.22);
       tone(990, 0.22, 'triangle', 0.22, null, 0.12);

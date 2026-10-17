@@ -14,7 +14,24 @@
     magnet: { name: '閃電吸取', icon: '⚡', unlock: 6, cost: 80, dur: 8, desc: '附近吞得下的任務物會自己被吸進洞' },
     zoom: { name: '放大鏡', icon: '🔍', unlock: 9, cost: 50, dur: 12, desc: '鏡頭拉遠，看得到更大的範圍' },
     freeze: { name: '冰凍時間', icon: '❄️', unlock: 12, cost: 70, dur: 10, desc: '倒數計時暫停' },
+    shoes: { name: '加速鞋', icon: '👟', unlock: 15, cost: 60, dur: 10, desc: '黑洞移動變快 1.5 倍' },
+    shield: { name: '防護罩', icon: '🛡️', unlock: 18, cost: 70, dur: 10, desc: '吃到「別吃」的東西不扣時間' },
   };
+  // 地上的神秘寶箱：吞下去隨機得到一種效果，六成是好的、四成是壞的（有 dur 的是限時效果，其餘立即生效）
+  const TREASURE = [
+    { id: 'fast', name: '疾風', icon: '💨', good: true, dur: 10 },
+    { id: 'big', name: '巨大化', icon: '🍄', good: true, dur: 10 },
+    { id: 'magnet', name: '吸力', icon: '🧲', good: true, dur: 8 },
+    { id: 'time', name: '+10 秒', icon: '⏱️', good: true },
+    { id: 'coins', name: '+30 金幣', icon: '💰', good: true },
+    { id: 'level', name: '升一級', icon: '⬆️', good: true },
+    { id: 'slow', name: '黏答答', icon: '🐌', good: false, dur: 8 },
+    { id: 'small', name: '縮小', icon: '🤏', good: false, dur: 8 },
+    { id: 'reverse', name: '方向顛倒', icon: '🔄', good: false, dur: 6 },
+    { id: 'near', name: '近視眼', icon: '👓', good: false, dur: 8 },
+    { id: 'lose', name: '-5 秒', icon: '💸', good: false },
+  ];
+  const TREASURE_OPP = { fast: 'slow', slow: 'fast', big: 'small', small: 'big' }; // 相反的效果互相抵銷
   const SIZE_STEP = 0.3; // 每升一級，黑洞半徑增加起始半徑的 30%
   const CONTINUE_COST = 50;
   // 關卡出包的補償：修好後第一次過該關多送金幣（每關只送一次）
@@ -93,6 +110,8 @@
   const speedMul = () => Math.max(0.5, Math.min(2, +save.speed || 1)); // 移動速度倍率（暫停選單可微調）
   // 越吃越快：黑洞每升一級速度 +2%，最多 +18%（官方沒有，刻意做得不明顯）
   const growSpeed = () => 1 + Math.min(0.18, Math.max(0, (hole.size || 1) - 1) * 0.02);
+  // 寶箱效果：疾風／黏答答改速度，方向顛倒把移動方向反過來
+  const fxSpeed = () => (G.boosts.shoes > 0 ? 1.5 : 1) * (G.fx.fast > 0 ? 1.5 : 1) * (G.fx.slow > 0 ? 0.55 : 1) * (G.fx.reverse > 0 ? -1 : 1);
   const CTRL_ZH = { joy: '搖桿', drag: '拖曳' };
   const isTouch = matchMedia('(pointer: coarse)').matches;
 
@@ -511,7 +530,7 @@
   const G = {
     state: 'boot', n: 1, L: null, ents: [], ims: [], goals: [], avoid: [],
     time: 0, total: 0, shownSec: -1, combo: 0, lastEat: -9, shake: 0, t: 0, orbit: 0, half: 15,
-    boosts: { magnet: 0, grow: 0, zoom: 0, freeze: 0 }, moved: false,
+    boosts: { magnet: 0, grow: 0, zoom: 0, freeze: 0, shoes: 0, shield: 0 }, fx: {}, chests: [], moved: false,
   };
   const hole = { pos: new T.Vector3(), area: 0.49, r: 0.7, vis: 0.7, size: 1, prog: 0, acc: new T.Vector2() };
   let world = null;
@@ -561,6 +580,60 @@
       state: 0, vy: 0, spin: 0, supports: [], above: [], goal: false,
       walk: def.walk ? { speed: def.walk * (0.8 + Math.random() * 0.4), dir: p.yaw, t: Math.random() * 3, ph: Math.random() * 9, pause: false } : null,
     };
+  }
+
+  // 神秘寶箱：前兩關教學關不放；位置用關卡種子決定，各瀏覽器一樣
+  function spawnChests(L) {
+    G.chests = [];
+    if (G.n < 3) return;
+    const R = H.rng((L.seed || 7) + 555), half = L.size / 2;
+    const lim = half * (L.shrink ? 0.45 : 0.85);
+    const want = L.size >= 40 ? 3 : 2, pts = [];
+    for (let tries = 0; tries < 80 && pts.length < want; tries++) {
+      const x = (R() * 2 - 1) * lim, z = (R() * 2 - 1) * lim;
+      if (Math.hypot(x - L.start[0], z - L.start[1]) < 3 || inWall(x, z, 0.6)) continue;
+      if ((G.spins || []).some((s) => (x - s.x) ** 2 + (z - s.z) ** 2 < (s.r + 0.5) ** 2)) continue;
+      if (pts.some((p) => Math.hypot(x - p.x, z - p.z) < half * 0.4)) continue;
+      if (G.ents.some((e) => Math.hypot(x - e.pos.x, z - e.pos.z) < e.r + 0.6)) continue;
+      pts.push({ kind: 'treasure', x, z, yaw: R() * PI * 2 });
+    }
+    if (!pts.length) return;
+    const im = new T.InstancedMesh(H.getGeo('treasure'), H.objMat, pts.length);
+    im.instanceMatrix.setUsage(T.DynamicDrawUsage);
+    im.castShadow = true;
+    im.frustumCulled = false;
+    world.add(im);
+    G.ims.push(im);
+    pts.forEach((p, i) => {
+      const e = makeEntity(p, im, i);
+      e.spinner = -1;
+      e.ph = R() * 9;
+      // 地上的金色光圈（用地面的模板設定，黑洞經過時不會蓋住洞口）
+      e.glow = new T.Mesh(new T.RingGeometry(0.34, 0.52, 28).rotateX(-PI / 2),
+        groundMat({ color: 0xffd54f, emissive: 0xffb300, emissiveIntensity: 0.8, transparent: true, opacity: 0.6, depthWrite: false }));
+      e.glow.position.set(p.x, 0.015, p.z);
+      e.glow.userData.own = true;
+      world.add(e.glow);
+      G.ents.push(e);
+      G.chests.push(e);
+      writeMatrix(e);
+    });
+  }
+
+  // 寶箱在地上轉圈、上下浮動，光圈一閃一閃
+  function animChests(dt) {
+    for (const e of G.chests) {
+      if (e.state !== 0) {
+        e.glow.visible = false;
+        continue;
+      }
+      e.yaw += dt * 1.2;
+      e.bob = 0.06 + Math.sin(G.t * 3 + e.ph) * 0.06;
+      writeMatrix(e);
+      const k = Math.sin(G.t * 4 + e.ph);
+      e.glow.scale.set(1 + k * 0.12, 1, 1 + k * 0.12);
+      e.glow.material.opacity = 0.45 + k * 0.2;
+    }
   }
 
   function buildLevel(n) {
@@ -689,6 +762,7 @@
     G.xpUnit = Math.max(2, Math.round((totalPts * 0.8) / 36));
     // 自動生成的關卡：成長速度已在 levels.js 逐層校正好（每層要先吃掉比它小的東西約六成）
     if (L.xpUnit) G.xpUnit = L.xpUnit;
+    spawnChests(L);
 
     hole.pos.set(L.start[0], 0, L.start[1]);
     hole.acc.set(0, 0);
@@ -712,6 +786,8 @@
     G.lateEats = [];
     G.shake = 0;
     for (const k in G.boosts) G.boosts[k] = 0;
+    G.fx = {};
+    updateFxBar();
     G.pre = {};
     G.arrow = false;
     arrowTarget = null;
@@ -735,6 +811,7 @@
     if (G.state !== 'paused') {
       updateEnts(dt, G.state === 'playing' && !G.overtime);
       updateFx(dt);
+      animChests(dt);
     }
     for (const im of G.ims) {
       if (im.userData.dirty) {
@@ -770,7 +847,7 @@
     }
     // 以「黑洞在螢幕上的位置」換算：把手指位移套在黑洞的螢幕座標上，再投影回地面。
     // 這樣黑洞在螢幕上走的方向＝手指方向，不會因為手指在螢幕上下不同位置（透視比例不同）而偏斜。
-    const sens = speedMul() * 0.8 * growSpeed();
+    const sens = speedMul() * 0.8 * growSpeed() * fxSpeed();
     const s = screenOf(hole.pos.x, 0, hole.pos.z);
     const fx = (e.clientX - px) * sens, fy = (e.clientY - py) * sens;
     if (!groundAt(s.x, s.y, _ga) || !groundAt(s.x + fx, s.y + fy, _gb)) return;
@@ -847,7 +924,7 @@
     let dx = _gb.x - _ga.x, dz = _gb.z - _ga.z;
     const l = Math.hypot(dx, dz) || 1;
     // 速度跟鏡頭高度成正比：黑洞變大、鏡頭拉遠後，在畫面上的速度感維持一致
-    const speed = camPos.y * H.SPEED_K * speedMul() * growSpeed() * m;
+    const speed = camPos.y * H.SPEED_K * speedMul() * growSpeed() * fxSpeed() * m;
     moveHole((dx / l) * speed * dt, (dz / l) * speed * dt);
     if (!G.moved) hideHint();
   }
@@ -962,13 +1039,21 @@
       }
     }
     updateBoostRings();
+    for (const k in G.fx) {
+      G.fx[k] -= dt;
+      if (G.fx[k] <= 0) {
+        delete G.fx[k];
+        popup(TREASURE.find((t) => t.id === k).name + ' 結束', 'info');
+      }
+    }
+    updateFxBar();
 
     joyStep(dt);
     // 鍵盤
     const kx = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
     const kz = (keys.KeyS || keys.ArrowDown ? 1 : 0) - (keys.KeyW || keys.ArrowUp ? 1 : 0);
     if (kx || kz) {
-      const l = Math.hypot(kx, kz), sp = (2.8 + hole.r * 1.2) * speedMul() * growSpeed() * dt;
+      const l = Math.hypot(kx, kz), sp = (2.8 + hole.r * 1.2) * speedMul() * growSpeed() * fxSpeed() * dt;
       moveHole((kx / l) * sp, (kz / l) * sp);
       if (!G.moved) hideHint();
     }
@@ -984,7 +1069,7 @@
   }
 
   function updateHoleMesh(dt, snap) {
-    const target = hole.r * (G.boosts.grow > 0 ? 1.45 : 1);
+    const target = hole.r * (G.boosts.grow > 0 ? 1.45 : 1) * (G.fx.big > 0 ? 1.35 : 1) * (G.fx.small > 0 ? 0.7 : 1);
     hole.vis = snap ? target : hole.vis + (target - hole.vis) * Math.min(1, dt * 5);
     holeGroup.position.set(hole.pos.x, 0, hole.pos.z);
     holeGroup.scale.set(hole.vis, 1, hole.vis);
@@ -1264,7 +1349,7 @@
 
   function updateEnts(dt, canEat) {
     const R = hole.vis, hx = hole.pos.x, hz = hole.pos.z;
-    const magnet = canEat && G.boosts.magnet > 0;
+    const magnet = canEat && (G.boosts.magnet > 0 || G.fx.magnet > 0);
     const cur = curGoal();
     if (dt > 0) {
       G.hvx = (hole.pos.x - (G.hpx ?? hole.pos.x)) / dt;
@@ -1411,6 +1496,7 @@
     if (G.state !== 'playing') return;
     G.combo = G.t - G.lastEat < 1.0 ? G.combo + 1 : 0;
     G.lastEat = G.t;
+    if (e.kind === 'treasure') { openChest(); return; }
     dexAdd(e.kind);
     if (e.kind === 'key') openDoor(e.color);
     const gi = G.goals.findIndex((g) => g.got < g.need && match(e, g));
@@ -1438,7 +1524,8 @@
       return;
     }
     if (G.avoid.some((a) => match(e, a))) {
-      penalty(e);
+      if (G.boosts.shield > 0) popup('🛡️ 擋住了！', 'good'); // 防護罩：不扣時間
+      else penalty(e);
       return;
     }
     grow(e);
@@ -1477,6 +1564,53 @@
     persist();
   }
 
+  function openChest() {
+    const good = Math.random() < 0.6;
+    const maxed = radiusOf(hole.size + 1) > (G.L.maxR || G.half * 0.3);
+    const list = TREASURE.filter((t) => t.good === good && !(t.id === 'level' && maxed));
+    const t = list[Math.floor(Math.random() * list.length)];
+    if (t.dur) {
+      G.fx[t.id] = t.dur;
+      delete G.fx[TREASURE_OPP[t.id]];
+      updateFxBar();
+    } else if (t.id === 'time') {
+      G.time += 10;
+      bumpTimer('bump-good');
+    } else if (t.id === 'lose') {
+      G.time = Math.max(0.01, G.time - 5);
+      bumpTimer('bump-bad');
+    } else if (t.id === 'coins') {
+      setCoins(save.coins + 30, true);
+      A.coin();
+    } else if (t.id === 'level') {
+      hole.xp = Math.max(hole.xp, xpNeed(hole.size));
+      updateSize();
+    }
+    banner(t.icon + ' ' + t.name, 'chest ' + (good ? 'good' : 'bad'));
+    if (good) {
+      A.boost();
+      vibrate(30);
+    } else {
+      A.bad();
+      flash();
+      G.shake = 0.3;
+      vibrate([60, 40, 60]);
+    }
+  }
+
+  // 畫面右上角列出目前的寶箱效果與剩餘秒數
+  let fxSig = null;
+  function updateFxBar() {
+    const ks = Object.keys(G.fx);
+    const sig = ks.map((k) => k + Math.ceil(G.fx[k])).join();
+    if (sig === fxSig) return;
+    fxSig = sig;
+    $('fxBar').innerHTML = ks.map((k) => {
+      const t = TREASURE.find((x) => x.id === k);
+      return `<div class="fx-chip ${t.good ? 'good' : 'bad'}">${t.icon} ${t.name} <b>${Math.ceil(G.fx[k])}</b></div>`;
+    }).join('');
+  }
+
   function penalty(e) {
     const bomb = e.kind === 'bomb';
     const sec = bomb ? 8 : 5;
@@ -1499,7 +1633,7 @@
   // ---------- 相機 ----------
   function camHeight() {
     const a = camera.aspect;
-    const base = (7 + hole.vis * 5.5) * (G.boosts.zoom > 0 ? 1.5 : 1) * (G.slow > 0 ? 0.75 : 1); // 放大鏡道具：視野拉遠；最後一個慢動作：拉近
+    const base = (7 + hole.vis * 5.5) * (G.boosts.zoom > 0 ? 1.5 : 1) * (G.slow > 0 ? 0.75 : 1) * (G.fx.near > 0 ? 0.65 : 1); // 放大鏡道具：視野拉遠；最後一個慢動作：拉近
     return base * (a < 0.7 ? 1.5 : a < 1 ? 1.3 : a < 1.3 ? 1.12 : 1);
   }
 
@@ -1580,9 +1714,9 @@
     el.addEventListener('animationend', () => el.remove());
   }
 
-  function banner(text) {
+  function banner(text, cls) {
     const el = document.createElement('div');
-    el.className = 'banner';
+    el.className = 'banner ' + (cls || '');
     el.textContent = text;
     $('fx').appendChild(el);
     el.addEventListener('animationend', () => el.remove());
@@ -1742,7 +1876,7 @@
     persist();
     A.boost();
     G.boosts[k] = cfg.dur;
-    popup({ grow: '黑洞變大！', magnet: '閃電吸取！', zoom: '視野放大！', freeze: '時間暫停！' }[k], 'info');
+    popup({ grow: '黑洞變大！', magnet: '閃電吸取！', zoom: '視野放大！', freeze: '時間暫停！', shoes: '加速！', shield: '防護罩！' }[k], 'info');
     refreshBoosters();
     showTimer();
   });
@@ -1924,7 +2058,7 @@
 
   // 物品圖鑑：縮圖分批產生，避免一次卡住
   function dexModal() {
-    const kinds = Object.keys(H.KINDS).filter((k) => k !== 'building');
+    const kinds = Object.keys(H.KINDS).filter((k) => k !== 'building' && k !== 'treasure');
     const got = kinds.filter((k) => save.dex && save.dex[k]).length;
     showModal(`
       <h2>物品圖鑑</h2>
