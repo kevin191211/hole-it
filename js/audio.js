@@ -19,7 +19,8 @@
         ctx = null;
       }
     }
-    if (ctx && ctx.state === 'suspended' && !document.hidden) ctx.resume();
+    // iOS 切背景、來電後會是 interrupted，不只 suspended
+    if (ctx && ctx.state !== 'running' && ctx.state !== 'closed' && !document.hidden) ctx.resume().catch(() => {});
     if (ctx && mus.id !== 'off' && !mus.timer) musicStart();
     return ctx;
   }
