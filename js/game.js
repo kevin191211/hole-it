@@ -3146,7 +3146,7 @@
   }
 
   // 黃金獵犬吉祥物：用 3D 模型拍成大圖（第一次用到才產生，之後快取）
-  const DOG_VIEW = { menu: [0.9, 0.55, 1.6], happy: [0.5, 0.7, 1.6], sad: [-0.3, 1.5, 1.4], peek: [0.2, 0.35, 1.6] };
+  const DOG_VIEW = { menu: [-1.2, 0.45, 1.3], happy: [0.5, 0.7, 1.6], sad: [-0.3, 1.5, 1.4], peek: [0.2, 0.35, 1.6] };
   const dogImg = (pose, cls) => { const src = H.portrait('puppy', 256, DOG_VIEW[pose]); return src ? `<img class="dog-pic ${cls || pose}" src="${src}" alt="">` : ''; };
 
   function showMenu() {

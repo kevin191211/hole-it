@@ -1234,7 +1234,9 @@ button {
 .challenge-tag.endless { left: 50%; transform: translateX(-50%); top: calc(var(--safe-t) + 66px); white-space: nowrap; background: rgba(91, 47, 201, 0.92); }
 
 /* ---------- 黃金獵犬吉祥物 ---------- */
-.menu-dog { display: block; width: clamp(84px, 15vh, 140px); height: auto; margin: 2px auto -10px; filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.28)); transform-origin: 50% 90%; animation: dogWag 1.8s ease-in-out infinite; }
+/* 坐在副標題左邊、臉朝文字；絕對定位，不佔版面高度 */
+.logo p { position: relative; display: inline-block; }
+.menu-dog { position: absolute; right: 100%; bottom: -10px; width: 64px; height: auto; margin-right: 6px; filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.3)); transform-origin: 50% 90%; animation: dogWag 1.8s ease-in-out infinite; pointer-events: none; }
 .menu-dog:not([src]) { visibility: hidden; }
 @keyframes dogWag { 0%, 100% { transform: rotate(-3deg) translateY(0); } 50% { transform: rotate(3deg) translateY(-6px); } }
 .dog-pic { display: block; width: 104px; height: 104px; margin: -10px auto -6px; filter: drop-shadow(0 5px 6px rgba(0, 0, 0, 0.18)); }
@@ -1244,7 +1246,7 @@ button {
 @keyframes dogSad { 0%, 100% { transform: rotate(-6deg); } 50% { transform: rotate(-2deg) translateY(2px); } }
 .dog-pic.peek { width: 76px; height: 76px; margin: -14px auto -8px; animation: dogWag 1.8s ease-in-out infinite; transform-origin: 50% 90%; }
 @media (max-height: 720px) {
-  .menu-dog { width: 72px; margin-bottom: -6px; }
+  .menu-dog { width: 54px; bottom: -8px; }
   .dog-pic { width: 80px; height: 80px; }
   .dog-pic.peek { display: none; }
 }
