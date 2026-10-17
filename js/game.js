@@ -708,6 +708,8 @@
     G.lastEat = -9;
     G.slow = 0;
     G.falling = 0;
+    G.overtime = 0;
+    G.lateEats = [];
     G.shake = 0;
     for (const k in G.boosts) G.boosts[k] = 0;
     G.pre = {};
@@ -731,7 +733,7 @@
     G.t += dt;
     if (G.state === 'playing') updatePlay(dt);
     if (G.state !== 'paused') {
-      updateEnts(dt, G.state === 'playing');
+      updateEnts(dt, G.state === 'playing' && !G.overtime);
       updateFx(dt);
     }
     for (const im of G.ims) {
@@ -931,6 +933,9 @@
     }
     if (G.time <= 0) {
       G.time = 0;
+      // 時間到時還有東西正在掉進洞：先等它們落地算完，再判定輸贏（最多等 3 秒）
+      if (G.ents.some((e) => e.state === 2) && (G.overtime += dt) < 3) return;
+      G.overtime = 0;
       lose();
       return;
     }
@@ -1401,6 +1406,8 @@
 
   function eaten(e) {
     if (e.counting) { e.counting = false; G.falling = Math.max(0, G.falling - 1); }
+    // 判定失敗後才落地的東西先記著，花金幣繼續時補算，不會憑空消失
+    if (G.state === 'lost') { G.lateEats.push(e); return; }
     if (G.state !== 'playing') return;
     G.combo = G.t - G.lastEat < 1.0 ? G.combo + 1 : 0;
     G.lastEat = G.t;
@@ -2108,9 +2115,12 @@
       setCoins(save.coins - CONTINUE_COST, true);
       G.time = 30;
       G.shownSec = -1;
+      G.overtime = 0;
       closeModal();
       G.state = 'playing';
       bumpTimer('bump-good');
+      const late = G.lateEats.splice(0);
+      for (const e of late) if (G.state === 'playing') eaten(e);
     },
     ctrl(btn) {
       save.ctrl = btn.dataset.ctrl;
