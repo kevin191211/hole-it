@@ -830,11 +830,11 @@
   // 每個主題：地板、物品池（[種類, 顏色?]）。分層時從池子裡挑，不同層不會用同一種物品（任務才不會混在一起算）
   const GEN = [
     { name: '城市街道', floor: 'city', pool: [['cone'], ['hydrant'], ['trash'], ['flower', 'yellow'], ['can', 'red'], ['papercup', 'green'], ['lamp'], ['bush'], ['bench'], ['tree'], ['pine'], ['car', 'red'], ['car', 'blue'], ['building', 'a']] },
-    { name: '公園野餐', floor: 'grass', pool: [['flower', 'pink'], ['duck'], ['bird'], ['soccer'], ['juicebox'], ['ball', 'blue'], ['apple', 'red'], ['bush'], ['bench'], ['tree'], ['pine'], ['lamp'], ['trash']] },
-    { name: '開心農場', floor: 'grass', pool: [['chicken'], ['turnip'], ['onion'], ['egg'], ['broccoli'], ['barrel'], ['crate'], ['hay'], ['pumpkin'], ['sheep'], ['pig'], ['tree']] },
+    { name: '公園野餐', floor: 'grass', pool: [['flower', 'pink'], ['duck'], ['bird'], ['bunny'], ['soccer'], ['puppy'], ['fox'], ['juicebox'], ['ball', 'blue'], ['apple', 'red'], ['bush'], ['bench'], ['tree'], ['pine'], ['lamp'], ['trash']], run: [['bunny', 'puppy', 'fox'], ['panda', 'sheep']] },
+    { name: '開心農場', floor: 'grass', pool: [['chicken'], ['bunny'], ['turnip'], ['onion'], ['egg'], ['puppy'], ['broccoli'], ['barrel'], ['crate'], ['hay'], ['pumpkin'], ['sheep'], ['pig'], ['cow'], ['tree']], run: [['chicken', 'bunny', 'puppy'], ['pig', 'cow', 'sheep']] },
     { name: '水果市集', floor: 'sky', pool: [['plum'], ['cherry'], ['strawberry'], ['orange'], ['tomato'], ['apple', 'green'], ['pear'], ['peach'], ['melonslice'], ['avocado'], ['pie'], ['watermelon'], ['pumpkin']] },
-    { name: '甜點店', floor: 'pink', pool: [['gumball'], ['macaron', 'pink'], ['cookie'], ['icecream', 'mint'], ['jar'], ['candy', 'red'], ['cocoa'], ['popsicle', 'yellow'], ['cupcake', 'blue'], ['waffle'], ['donut', 'choc'], ['cake', 'pink']] },
-    { name: '壽司吧', floor: 'blue', pool: [['maki', 'salmon'], ['maki', 'cucumber'], ['nigiri', 'tuna'], ['cup'], ['plate'], ['shrimp'], ['onigiri'], ['egg'], ['pot'], ['boat'], ['soydish']] },
+    { name: '甜點店', floor: 'pink', pool: [['gumball'], ['hamster'], ['macaron', 'pink'], ['cookie'], ['icecream', 'mint'], ['jar'], ['candy', 'red'], ['cocoa'], ['popsicle', 'yellow'], ['cupcake', 'blue'], ['waffle'], ['donut', 'choc'], ['cake', 'pink']] },
+    { name: '壽司吧', floor: 'blue', pool: [['maki', 'salmon'], ['maki', 'cucumber'], ['nigiri', 'tuna'], ['cup'], ['penguin'], ['plate'], ['shrimp'], ['kitten'], ['onigiri'], ['egg'], ['pot'], ['boat'], ['soydish']], run: [['penguin', 'kitten'], ['panda']] },
     { name: '玩具房', floor: 'purple', pool: [['cube', 'blue'], ['gumball'], ['dice', 'yellow'], ['star'], ['gift', 'red'], ['duck'], ['brick', 'green'], ['minitrain'], ['ringstack'], ['rocket'], ['arcade'], ['abacus'], ['helicopter'], ['jeep'], ['toytrain']] },
     { name: '家電行', floor: 'slate', pool: [['can', 'white'], ['walkie'], ['mic'], ['juicebox'], ['hairdryer'], ['headphones', 'pink'], ['phone'], ['blender'], ['radio'], ['microwave'], ['tv'], ['fridge']] },
     { name: '運動場', floor: 'grass', pool: [['tennis'], ['billiard'], ['flipflop'], ['basketball'], ['soccer'], ['ball', 'red'], ['juicebox'], ['racket'], ['crate'], ['board'], ['boat']] },
@@ -846,7 +846,10 @@
   const holeR = (n) => 0.55 * (1 + 0.3 * (n - 1));
   const needLv = (r) => { let n = 1; while (holeR(n) * 0.95 < r) n++; return n; };
   const STACKABLE = ['cube', 'dice', 'brick', 'crate', 'gift', 'cheese', 'plate', 'juicebox', 'can', 'papercup', 'macaron', 'cookie', 'hay', 'barrel', 'gumball', 'waffle'];
-  const WALKERS = ['chicken', 'pig', 'sheep', 'person'];
+  // 大隻會走的（只在追逐關出現）；小動物（小雞、兔兔、小狗…）一般關也會在場上亂跑
+  const WALKERS = ['pig', 'sheep', 'person', 'panda', 'cow'];
+  // 追逐關的逃跑小動物：主題沒指定 run 就從全部裡挑
+  const RUN_SMALL = ['chicken', 'bunny', 'puppy', 'kitten', 'penguin', 'hamster', 'fox'], RUN_BIG = ['pig', 'sheep', 'panda', 'cow'];
   const MODES = ['night', 'normal', 'maze', 'chase', 'spin', 'normal', 'keymaze', 'order', 'shrink', 'normal', 'normal'];
   const MODE_NAME = { maze: '迷宮', chase: '追逐', order: '順序', night: '夜晚', boss: '頭目', spin: '旋轉盤', keymaze: '鑰匙迷宮', shrink: '縮圈' };
   const MODE_TIP = {
@@ -1026,8 +1029,9 @@
     let nt = Math.min(7, 3 + Math.floor(idx / 8));
     if (boss) nt = 7;
     if (maze) nt = Math.min(nt, 5); // 迷宮裡黑洞不能太大
-    const pool = shuffle(theme.pool.filter(([k]) => !(WALKERS.includes(k) && !chase && k !== 'chicken')));
-    const runners = chase ? [['chicken', Math.min(18, 8 + Math.floor(idx / 6)), 1], ['pig', Math.min(5, 2 + Math.floor(idx / 20)), 0.62 / 0.5]] : [];
+    const pool = shuffle(theme.pool.filter(([k]) => !(WALKERS.includes(k) && !chase)));
+    const runSmall = chase ? pick((theme.run || [])[0] || RUN_SMALL) : null, runBig = chase ? pick((theme.run || [])[1] || RUN_BIG) : null;
+    const runners = chase ? [[runSmall, Math.min(18, 8 + Math.floor(idx / 6)), 1], [runBig, Math.min(5, 2 + Math.floor(idx / 20)), 0.62 / H.KINDS[runBig].r]] : [];
     const used = new Set(runners.map((x) => x[0]));
     // 從池子挑一種：符合 fn 的物品裡，原尺寸最接近 want 的（放大倍率才不會太誇張）
     const take = (fn, want) => {

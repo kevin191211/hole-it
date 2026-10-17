@@ -744,7 +744,7 @@
       r: def.r * s, h: im.geometry.boundingBox.max.y * s, value: def.r * def.r * s * s,
       yaw: p.yaw, tilt: 0, axis: new T.Vector3(1, 0, 0), scale: 1, base: s, bob: 0,
       state: 0, vy: 0, spin: 0, supports: [], above: [], goal: false,
-      walk: def.walk ? { speed: def.walk * (0.8 + Math.random() * 0.4), dir: p.yaw, t: Math.random() * 3, ph: Math.random() * 9, pause: false } : null,
+      walk: def.walk ? { speed: def.walk * (0.8 + Math.random() * 0.4), dir: p.yaw, t: Math.random() * 3, ph: Math.random() * 9, pause: false, hop: def.hop || 1 } : null,
     };
   }
 
@@ -1534,16 +1534,25 @@
     }
     if (w.pause) return;
     const sp = w.speed * (flee ? 2 * (G.L.flee || 1) : 1);
-    const nx = p.x + Math.sin(w.dir) * sp * dt, nz = p.z + Math.cos(w.dir) * sp * dt;
-    const lim = G.half - e.r - 0.3;
-    if (Math.abs(nx) > lim || Math.abs(nz) > lim || inWall(nx, nz, e.r * 0.8)) {
-      w.dir += PI * (0.5 + Math.random());
-      return;
+    const lim = G.half - e.r - 0.3, wr = e.r * 0.8, stuckIn = inWall(p.x, p.z, wr);
+    // 能不能走到 (nx, nz)：已經在界外／牆裡（縮圈、生成重疊）時，只要不是更深入就放行，免得永遠卡死
+    const ok = (nx, nz) => (Math.abs(nx) <= lim || Math.abs(nx) < Math.abs(p.x))
+      && (Math.abs(nz) <= lim || Math.abs(nz) < Math.abs(p.z))
+      && (stuckIn || !inWall(nx, nz, wr));
+    // 撞到牆／場邊：從原方向往左右逐步偏轉找出路，會沿著牆邊跑而不是停住
+    let dir = null;
+    const side = w.ph % 2 < 1 ? 1 : -1;
+    for (const off of [0, 0.4, -0.4, 0.8, -0.8, 1.2, -1.2, 1.6, -1.6, 2.1, -2.1, 2.6, -2.6, PI]) {
+      const d = w.dir + off * side;
+      if (ok(p.x + Math.sin(d) * sp * dt, p.z + Math.cos(d) * sp * dt)) { dir = d; break; }
     }
-    p.x = nx;
-    p.z = nz;
+    if (dir === null) return;
+    if (!flee && dir !== w.dir) w.t = Math.max(w.t, 0.8); // 閒逛時轉向後先照新方向走一陣子
+    w.dir = dir;
+    p.x += Math.sin(dir) * sp * dt;
+    p.z += Math.cos(dir) * sp * dt;
     e.yaw = w.dir;
-    e.bob = Math.abs(Math.sin(G.t * (flee ? 15 : 9) + w.ph)) * 0.06;
+    e.bob = Math.abs(Math.sin(G.t * (flee ? 15 : 9) + w.ph)) * 0.06 * w.hop;
     e.dirty = true;
   }
 
