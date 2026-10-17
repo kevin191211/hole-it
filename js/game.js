@@ -101,6 +101,12 @@
   const chestMs = (i) => (i < CHEST_MS.length ? CHEST_MS[i] : 100 + 40 * (i - CHEST_MS.length + 1));
   const chestReward = (i) => (i === 0 ? { type: 'coins', n: 150 } : i === 1 ? { type: 'pack' } : i === 2 ? { type: 'skin', id: 'starry' }
     : i === 3 ? { type: 'coins', n: 300 } : i === 4 ? { type: 'fx', id: 'meteor' } : (i - 5) % 2 === 0 ? { type: 'coins', n: 300 } : { type: 'pack' });
+  // 無盡模式：第 8 關過關（解鎖到第 9 關）後開放；開局 60 秒，吃東西補時間，吃得剩 30% 就補下一波
+  const ENDLESS_UNLOCK = 9, ENDLESS_TIME = 60, ENDLESS_BOSS_GAP = 60, ENDLESS_BOSS_SEC = 15, ENDLESS_REFILL = 0.3;
+  // 隨機金色物件：每局機率（無盡模式每波）、吃到的金幣
+  const GOLD_CHANCE = 0.35, GOLD_CHANCE_WAVE = 0.25, GOLD_COINS = 30;
+  // 成就徽章牆：th 為銅／銀／金的門檻（'all' 取 all()）；val 回傳目前進度。獎勵 銅 50／銀 100／金 200（只有 1 級的算金）
+  const TIER_ZH = ['銅', '銀', '金'], TIER_ICON = ['🥉', '🥈', '🥇'], TIER_COINS = [50, 100, 200];
   // 開局加成：開始前在任務畫面勾選，只限這一局
   const PRE = {
     size: { name: '開局大一級', icon: '🕳️', cost: 100 },
@@ -172,7 +178,7 @@
   function loadSave() {
     try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch (e) { return {}; }
   }
-  const SAVE_DEFAULTS = () => ({ level: 1, unlocked: 1, stars: {}, coins: 200, muted: false, speed: 1, ctrl: 'joy', bag: {}, granted: {}, skins: ['classic'], skin: 'classic', fxs: ['none'], fx: 'none', trails: ['none'], trail: 'none', daily: {}, dex: {}, missions: null, chestsOpened: 0, checkin: { last: '', day: 0 }, event: {}, challenges: {} });
+  const SAVE_DEFAULTS = () => ({ level: 1, unlocked: 1, stars: {}, coins: 200, muted: false, speed: 1, ctrl: 'joy', bag: {}, granted: {}, skins: ['classic'], skin: 'classic', fxs: ['none'], fx: 'none', trails: ['none'], trail: 'none', daily: {}, dex: {}, missions: null, chestsOpened: 0, checkin: { last: '', day: 0 }, event: {}, challenges: {}, endless: { best: 0, bestTime: 0, plays: 0 }, stats: {}, ach: {} });
   // 存檔來源（localStorage、存檔碼、網址 #save=）都可能被改過：只留數字、布林、短代號字串，
   // 含 < > 引號空白的字串和 __proto__ 等鍵一律丟掉，免得被塞進 innerHTML（XSS）
   const MAX_LEVEL = 9999;
@@ -406,12 +412,13 @@
   rimGroup.add(arrowPivot);
   let arrowT = 0, arrowTarget = null;
   function updateArrow(dt) {
-    const on = G.arrow && (G.state === 'playing' || G.state === 'paused');
+    const bossE = G.endless && G.endless.boss && G.endless.boss.state === 0 ? G.endless.boss : null; // 無盡模式的頭目：一直有箭頭指路
+    const on = (G.arrow || bossE) && (G.state === 'playing' || G.state === 'paused');
     if (on && G.state === 'playing' && (arrowT -= dt) <= 0) {
       arrowT = 0.25;
-      arrowTarget = null;
+      arrowTarget = bossE;
       let best = 1e9;
-      for (const e of G.ents) {
+      for (const e of bossE ? [] : G.ents) {
         if (e.state !== 0 || !e.goal || !goalOpen(e)) continue;
         const d = (e.pos.x - hole.pos.x) ** 2 + (e.pos.z - hole.pos.z) ** 2;
         if (d < best) { best = d; arrowTarget = e; }
@@ -733,7 +740,7 @@
         o.geometry.dispose();
         if (o.material.map && o.material.map !== grassTex) o.material.map.dispose();
         o.material.dispose();
-      }
+      } else if (o.isSprite && o.userData.own) o.material.dispose(); // 金色物件的光暈（貼圖共用，不釋放）
     });
     world = null;
   }
@@ -823,17 +830,61 @@
     }
   }
 
-  function buildLevel(n) {
+  // 把一批物件擺進場景：同種物件合併成一個 InstancedMesh，回傳新建立的實體
+  function addItems(items) {
+    const groups = new Map(), out = [];
+    items.forEach((p) => {
+      const key = p.kind + '|' + (p.color || '');
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(p);
+    });
+    groups.forEach((list) => {
+      const im = new T.InstancedMesh(H.getGeo(list[0].kind, list[0].color), H.objMat, list.length);
+      im.instanceMatrix.setUsage(T.DynamicDrawUsage);
+      im.castShadow = true;
+      im.frustumCulled = false;
+      world.add(im);
+      G.ims.push(im);
+      list.forEach((p, i) => {
+        const e = makeEntity(p, im, i);
+        G.ents.push(e);
+        out.push(e);
+        writeMatrix(e);
+      });
+    });
+    return out;
+  }
+  // 堆疊關係
+  function stackEnts(list) {
+    list.forEach((e) => {
+      if (e.pos.y > 0.01) {
+        const sup = findSupport(e);
+        e.supports = sup.list;
+        sup.list.forEach((c) => c.above.push(e));
+        if (!sup.list.length) e.state = 1; // 底下被擠掉的話就自己掉下來
+      }
+    });
+    list.forEach((e) => {
+      const off = e.state === 0 && e.supports.length ? imbalance(e, e.supports) : null;
+      if (off) startDrop(e, off);
+    });
+  }
+
+  function buildLevel(n, menu) {
     disposeWorld();
-    // n：關卡號、'daily'（今天的每日挑戰）、'daily:YYYY-MM-DD'（朋友連結指定日期）、'ev:halloween:N'（活動關）
+    // n：關卡號、'daily'（今天的每日挑戰）、'daily:YYYY-MM-DD'（朋友連結指定日期）、'ev:halloween:N'（活動關）、'endless'（無盡模式）
+    // menu：主選單背景用的預覽，不抽金色物件
     const ev = typeof n === 'string' && n.startsWith('ev:') ? n.split(':') : null;
     const daily = typeof n === 'string' && n.startsWith('daily');
+    const endless = n === 'endless';
     const dayKey = daily ? (n.length > 6 ? n.slice(6) : todayKey()) : null;
-    const L = ev ? H.getEventLevel(+ev[2]) : daily ? H.getDaily(Math.floor(Date.parse(dayKey + 'T00:00:00Z') / 86400000)) : H.getLevel(n);
+    if (endless) G.run = Math.floor(Math.random() * 1e6);
+    const L = endless ? H.getEndlessWave(G.run, 1) : ev ? H.getEventLevel(+ev[2]) : daily ? H.getDaily(Math.floor(Date.parse(dayKey + 'T00:00:00Z') / 86400000)) : H.getLevel(n);
     G.ref = n;
     G.daily = dayKey;
     G.event = ev ? { id: ev[1], i: +ev[2] } : null;
-    G.n = daily || ev ? 999 : n; // 每日挑戰、活動關：道具全開，不影響一般關卡進度
+    G.endless = endless ? { wave: 1, waveN: 0, elapsed: 0, nextBoss: ENDLESS_BOSS_GAP, eaten: 0, maxCombo: 0, golden: 0, bosses: 0, record: false, next: null, items: null, boss: null, chk: 0 } : null;
+    G.n = daily || ev || endless ? 999 : n; // 每日挑戰、活動關、無盡模式：道具全開，不影響一般關卡進度
     G.L = L;
     const floor = H.FLOORS[L.floor];
     world = new T.Group();
@@ -903,42 +954,14 @@
         G.barriers.push(m);
       }
     }
-    const groups = new Map();
-    items.forEach((p) => {
-      const key = p.kind + '|' + (p.color || '');
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(p);
-    });
     G.ents = [];
     G.ims = [];
-    groups.forEach((list) => {
-      const im = new T.InstancedMesh(H.getGeo(list[0].kind, list[0].color), H.objMat, list.length);
-      im.instanceMatrix.setUsage(T.DynamicDrawUsage);
-      im.castShadow = true;
-      im.frustumCulled = false;
-      world.add(im);
-      G.ims.push(im);
-      list.forEach((p, i) => {
-        const e = makeEntity(p, im, i);
-        G.ents.push(e);
-        writeMatrix(e);
-      });
-    });
-    // 堆疊關係
-    G.ents.forEach((e) => {
-      if (e.pos.y > 0.01) {
-        const sup = findSupport(e);
-        e.supports = sup.list;
-        sup.list.forEach((c) => c.above.push(e));
-        if (!sup.list.length) e.state = 1; // 底下被擠掉的話就自己掉下來
-      }
-    });
-    G.ents.forEach((e) => {
-      const off = e.state === 0 && e.supports.length ? imbalance(e, e.supports) : null;
-      if (off) startDrop(e, off);
-    });
+    G.golds = [];
+    G.maxCombo = 0;
+    stackEnts(addItems(items));
 
-    G.goals = L.goals.map(([kind, need, color]) => ({
+    // 無盡模式沒有任務清單，吃東西補時間
+    G.goals = endless ? [] : L.goals.map(([kind, need, color]) => ({
       kind, color: color || null, need, got: 0, label: kind === 'star' ? '星星點數' : H.labelOf(kind, color), img: H.thumb(kind, color),
     }));
     G.avoid = (L.avoid || []).map(([kind, color]) => ({
@@ -969,7 +992,7 @@
     hole.r = hole.vis = L.holeR;
     ringShown = -1;
     setRing(0);
-    G.time = G.total = L.time;
+    G.time = G.total = endless ? ENDLESS_TIME : L.time;
     G.shownSec = -1;
     G.score = 0;
     G.popPts = 0;
@@ -992,7 +1015,115 @@
     clearFx();
     G.half = S / 2;
     G.moved = false;
+    if (endless) G.endless.waveN = aliveCount();
+    // 隨機金色物件：主線、每日、活動、無盡每局有機率出現 1 個（主選單預覽和好友挑戰不抽）
+    if (!menu && !G.challenge && Math.random() < (endless ? GOLD_CHANCE_WAVE : GOLD_CHANCE)) pickGolden(G.ents);
     updateHoleMesh(0, true);
+  }
+
+  // ---------- 隨機金色物件 ----------
+  // 從候選裡挑一個「現在吞得下、或高一級才吞得下」的一般物件，換成金色材質；不挑任務物、別吃物、會走動的、疊在別的東西上的
+  let goldMat = null, goldTex = null;
+  function goldTexture() {
+    if (goldTex) return goldTex;
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const x = c.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, 'rgba(255,250,200,1)');
+    g.addColorStop(0.3, 'rgba(255,214,80,0.7)');
+    g.addColorStop(1, 'rgba(255,190,0,0)');
+    x.fillStyle = g;
+    x.fillRect(0, 0, 64, 64);
+    goldTex = new T.CanvasTexture(c);
+    return goldTex;
+  }
+  function pickGolden(list) {
+    const lim = radiusOf(hole.size + 1) * 0.95;
+    const ok = list.filter((e) => e.state === 0 && e.pos.y < 0.01 && !e.supports.length && !e.above.length && !e.goal && !e.walk && !e.boss && !e.golden
+      && !['bomb', 'key', 'treasure'].includes(e.kind) && !G.avoid.some((a) => match(e, a)) && e.spinner < 0 && e.r <= lim && e.r >= 0.1 && !G.L.shrink);
+    if (!ok.length) return null;
+    const big = ok.filter((e) => e.r >= 0.2); // 太小的看不清楚，有別的選擇就不挑
+    const pool = big.length ? big : ok;
+    const e = pool[Math.floor(Math.random() * pool.length)];
+    goldenize(e);
+    return e;
+  }
+  function goldenize(e) {
+    if (!goldMat) goldMat = new T.MeshPhongMaterial({ color: 0xffc933, emissive: 0x8a5a00, emissiveIntensity: 0.55, shininess: 160, specular: 0xfff4b0, flatShading: true });
+    // 原本合併的 InstancedMesh 裡把這一個藏起來，另外給它自己的 InstancedMesh（金色材質）
+    _m.makeScale(0, 0, 0);
+    e.im.setMatrixAt(e.idx, _m);
+    e.im.userData.dirty = true;
+    const im = new T.InstancedMesh(e.im.geometry, goldMat, 1);
+    im.instanceMatrix.setUsage(T.DynamicDrawUsage);
+    im.castShadow = true;
+    im.frustumCulled = false;
+    world.add(im);
+    G.ims.push(im);
+    e.im = im;
+    e.idx = 0;
+    e.golden = true;
+    e.ph = Math.random() * 9;
+    const grp = new T.Group();
+    const ring = new T.Mesh(new T.RingGeometry(e.r * 0.9, e.r * 1.35 + 0.15, 32).rotateX(-PI / 2),
+      groundMat({ color: 0xffd54f, emissive: 0xffb300, emissiveIntensity: 0.8, transparent: true, opacity: 0.6, depthWrite: false }));
+    ring.position.y = 0.02;
+    ring.userData.own = true;
+    grp.add(ring);
+    const sp = (size, op) => {
+      const s = new T.Sprite(new T.SpriteMaterial({ map: goldTexture(), color: 0xffe27a, transparent: true, opacity: op, depthWrite: false, blending: T.AdditiveBlending }));
+      s.scale.setScalar(size);
+      s.userData.own = true;
+      grp.add(s);
+      return s;
+    };
+    e.halo = sp(Math.max(1.2, e.r * 3.6), 0.6);
+    e.halo.position.y = e.h * 0.5 + 0.1;
+    e.sparks = [0, 1, 2].map(() => sp(Math.max(0.35, e.r * 0.9), 0.9));
+    grp.position.set(e.pos.x, 0, e.pos.z);
+    e.fxg = grp;
+    world.add(grp);
+    G.golds.push(e);
+    writeMatrix(e);
+    return e;
+  }
+  // 金色物件：緩慢旋轉、上下浮動，光暈呼吸、三顆光點繞著閃
+  function animGolds(dt) {
+    for (const e of G.golds || []) {
+      if (e.state !== 0) {
+        e.fxg.visible = false;
+        continue;
+      }
+      e.yaw += dt * 1.4;
+      e.bob = 0.07 + Math.sin(G.t * 2.4 + e.ph) * 0.07;
+      writeMatrix(e);
+      e.fxg.position.set(e.pos.x, 0, e.pos.z);
+      const k = Math.sin(G.t * 4 + e.ph);
+      e.halo.material.opacity = 0.5 + k * 0.22;
+      e.halo.position.y = e.h * 0.5 + e.bob + 0.1;
+      e.sparks.forEach((s, i) => {
+        const a = G.t * 1.8 + i * 2.094, tw = 0.5 + 0.5 * Math.sin(G.t * 6 + i * 2 + e.ph);
+        s.position.set(Math.cos(a) * (e.r * 1.1 + 0.2), e.h * (0.25 + 0.5 * (0.5 + 0.5 * Math.sin(G.t * 1.3 + i * 2))) + e.bob, Math.sin(a) * (e.r * 1.1 + 0.2));
+        s.material.opacity = 0.35 + tw * 0.65;
+      });
+    }
+  }
+  // 吃到金色物件：+30 金幣、叮聲、震動、popup、金色粒子，並計入成就
+  function goldenEaten(e) {
+    statBump('golden');
+    if (G.endless) G.endless.golden++;
+    setCoins(save.coins + GOLD_COINS, true);
+    A.golden();
+    vibrate([30, 40, 30, 60]);
+    popup('✨ 金色寶物！', 'combo', 70);
+    popup('+' + GOLD_COINS + ' 🪙', 'good', 40);
+    const s = screenOf(e.pos.x, 0, e.pos.z);
+    flyCoins({ left: s.x, top: s.y, width: 0, height: 0 }, $('hudCoinsPill'), 6);
+    const k = (7 + hole.vis * 5.5) / 12.5;
+    for (let i = 0; i < 16; i++) {
+      const a = Math.random() * PI * 2, c = Math.cos(a), sn = Math.sin(a), out = (1.5 + Math.random() * 3) * k;
+      fxSpawn(e.pos.x, 0.4 * k, e.pos.z, c * out, (3 + Math.random() * 4) * k, sn * out, 14 * k, 0.4, 0.9, (0.3 + Math.random() * 0.25) * k, i % 3 ? 0xffd54f : 0xffffff, i % 2 ? 0 : 4);
+    }
   }
 
   // ---------- 主迴圈 ----------
@@ -1019,6 +1150,12 @@
       updateEnts(dt, G.state === 'playing' && !G.overtime);
       updateFx(dt);
       animChests(dt);
+      animGolds(dt);
+      animBoss(dt);
+    }
+    if (G.t > achNext) { // 成就：偶爾檢查一次有沒有達成新等級
+      achNext = G.t + 1.5;
+      achCheck();
     }
     for (const im of G.ims) {
       if (im.userData.dirty) {
@@ -1238,9 +1375,11 @@
       // 時間到時還有東西正在掉進洞：先等它們落地算完，再判定輸贏（最多等 3 秒）
       if (G.ents.some((e) => e.state === 2) && (G.overtime += dt) < 3) return;
       G.overtime = 0;
-      lose();
+      if (G.endless) endlessOver(); // 無盡模式：時間歸零就結算，沒有「+30 秒繼續」
+      else lose();
       return;
     }
+    if (G.endless) endlessTick(dt);
     if (G.L.shrink) {
       const S = G.L.shrink, f = 1 - G.time / G.total;
       const k = G.shrinkK = Math.max(G.shrinkK || 0, Math.min(1, (f - S.t0) / (S.t1 - S.t0)));
@@ -1798,6 +1937,7 @@
   let popTimer = 0;
   function addScore(pts, good) {
     G.score += pts;
+    if (G.endless) endlessScoreCheck();
     const el = $('hudScore');
     el.textContent = G.score;
     el.classList.remove('bump');
@@ -1826,8 +1966,13 @@
     if (e.kind === 'treasure') { openChest(); return; }
     missionBump('eat', 1);
     missionBump('combo', G.combo + 1, true);
+    statMax('maxCombo', G.combo + 1);
+    G.maxCombo = Math.max(G.maxCombo || 0, G.combo + 1);
+    softSave();
     const big = Math.min(1, e.r / hole.r); // 吞下的東西跟黑洞比有多大，給音效用
     dexAdd(e.kind);
+    if (e.golden) goldenEaten(e);
+    if (e.boss) endlessBossDown(e);
     if (e.kind === 'key') openDoor(e.color);
     const gi = G.goals.findIndex((g) => g.got < g.need && match(e, g));
     if (gi >= 0) {
@@ -1849,6 +1994,7 @@
       }
       updateGoal(gi);
       if (G.L.boss === e.kind && e.base > 1) {
+        statBump('bosses');
         popup('打倒頭目！', 'combo', 60);
         A.bossDown();
         G.shake = 0.9;
@@ -1863,6 +2009,7 @@
     if (G.avoid.some((a) => match(e, a))) {
       if (G.boosts.shield > 0) { // 防護罩：不扣時間
         popup('🛡️ 擋住了！', 'good');
+        statBump('shieldBlocks');
         shieldHit();
         A.shield();
       }
@@ -1873,6 +2020,7 @@
     feverEat();
     A.gulp(G.combo, big);
     addScore(starPts(e), false);
+    if (G.endless) endlessEat(e);
   }
 
   // ---------- 狂熱模式 ----------
@@ -1900,6 +2048,7 @@
     vibrate([30, 40, 30, 40, 80]);
     G.shake = 0.25;
     missionBump('fever', 1);
+    statBump('fevers');
   }
   // 時間到：連擊歸零，要重新累積才能再觸發
   function endFever() {
@@ -2257,7 +2406,7 @@
   // ---------- 道具：到指定關卡解鎖並送 1 個；數量用完後點擊會用金幣購買 ----------
   function grantBoosters() {
     G.newBoost = [];
-    if (G.daily || G.event || G.challenge) return; // 每日挑戰、活動關、好友挑戰的關卡編號不能拿來判斷解鎖
+    if (G.daily || G.event || G.challenge || G.endless) return; // 每日挑戰、活動關、好友挑戰的關卡編號不能拿來判斷解鎖
     for (const k in BOOST) {
       if (G.n >= BOOST[k].unlock && !save.granted[k]) {
         G.newBoost.push(k);
@@ -2342,6 +2491,7 @@
     A.booster(k);
     G.boosts[k] = cfg.dur;
     missionBump('boost', 1);
+    statBump('boosts');
     popup({ grow: '黑洞變大！', magnet: '閃電吸取！', zoom: '視野放大！', freeze: '時間暫停！', shoes: '加速！', shield: '防護罩！' }[k], 'info');
     refreshBoosters();
     showTimer();
@@ -2535,7 +2685,7 @@
     }, 1100);
   }
 
-  const lvLabel = () => (G.event ? `🎃 萬聖節活動・第 ${G.event.i} 關` : G.daily ? `每日挑戰・${G.daily.slice(5).replace('-', '/')}` : `第 ${G.n} 關`);
+  const lvLabel = () => (G.endless ? `♾️ 無盡模式・第 ${G.endless.wave} 波` : G.event ? `🎃 萬聖節活動・第 ${G.event.i} 關` : G.daily ? `每日挑戰・${G.daily.slice(5).replace('-', '/')}` : `第 ${G.n} 關`);
 
   // 每日挑戰過關：每天第一次過關多送 100 金幣，不動一般關卡進度
   function winDaily(stars, final, timeBonus) {
@@ -2575,11 +2725,19 @@
   }
 
   // 物品圖鑑：縮圖分批產生，避免一次卡住
-  function dexModal() {
-    const kinds = Object.keys(H.KINDS).filter((k) => k !== 'building' && k !== 'treasure');
+  // 圖鑑彈窗的分頁：📖 圖鑑｜🏅 成就
+  function dexTabs(tab) {
+    return `<div class="seg shop-tabs dex-tabs">
+      <button class="${tab === 'dex' ? 'on' : ''}" data-act="dexTab" data-tab="dex">📖 圖鑑</button>
+      <button class="${tab === 'ach' ? 'on' : ''}" data-act="dexTab" data-tab="ach">🏅 成就${achClaimable() ? '<i class="tab-dot"></i>' : ''}</button></div>`;
+  }
+  function dexModal(tab) {
+    if (tab === 'ach') return achModal();
+    const kinds = dexKinds();
     const got = kinds.filter((k) => save.dex && save.dex[k]).length;
     showModal(`
       <h2>物品圖鑑</h2>
+      ${dexTabs('dex')}
       <div class="m-note">已收集 ${got} / ${kinds.length} 種・每收集 10 種送 50 金幣</div>
       <div class="dex-grid">${kinds.map((k) => {
         const n = save.dex && save.dex[k];
@@ -2683,6 +2841,7 @@
   }
 
   function rollGacha() {
+    statBump('gacha');
     let r = Math.random() * GACHA.reduce((t, g) => t + g.w, 0);
     const g = GACHA.find((x) => (r -= x.w) < 0) || GACHA[0];
     if (g.type === 'coins') {
@@ -2940,9 +3099,10 @@
     $('fx').innerHTML = '';
     buildLevel(n);
     $('hud').classList.remove('hidden');
-    $('hudLevelTag').innerHTML = G.event ? `🎃 活動第 ${G.event.i} 關` : G.daily ? '每日挑戰' : `第 <span id="hudLevel">${n}</span> 關`;
-    $('hudChallenge').textContent = challenge ? `挑戰：剩 ${challenge.t} 秒` : '';
-    $('hudChallenge').classList.toggle('hidden', !challenge);
+    $('hudLevelTag').innerHTML = G.endless ? '♾️ 第 <span id="hudLevel">1</span> 波' : G.event ? `🎃 活動第 ${G.event.i} 關` : G.daily ? '每日挑戰' : `第 <span id="hudLevel">${n}</span> 關`;
+    $('hudChallenge').textContent = challenge ? `挑戰：剩 ${challenge.t} 秒` : G.endless ? `最佳 ${endlessSave().best}` : '';
+    $('hudChallenge').classList.toggle('hidden', !challenge && !G.endless);
+    $('hudChallenge').classList.toggle('endless', !!G.endless);
     $('hudScore').textContent = 0;
     showTimer();
     $('dragHint').classList.remove('off');
@@ -2955,6 +3115,7 @@
     G.state = 'intro';
     updateCamera(0, true);
     if (quick) actions.begin();
+    else if (G.endless) endlessIntro();
     else introModal();
   }
 
@@ -2984,7 +3145,7 @@
     $('hud').classList.add('hidden');
     $('fx').innerHTML = '';
     save.level = Math.min(save.level, save.unlocked);
-    buildLevel(save.level);
+    buildLevel(save.level, true);
     G.state = 'menu';
     $('menuLevel').textContent = save.level;
     $('menuCoins').textContent = save.coins;
@@ -2992,6 +3153,7 @@
     stopFever();
     setDanger(0);
     updateMenuBadges();
+    updateEndlessBtn();
     $('btnEvent').classList.toggle('hidden', !eventActive('halloween'));
     const dailyDone = !!(save.daily && save.daily[todayKey()]);
     $('dailyLabel').textContent = dailyDone ? '今日已完成' : '每日挑戰';
@@ -3056,6 +3218,397 @@
     (overModal ? document.body : $('fx')).appendChild(el);
     el.addEventListener('animationend', () => el.remove());
   }
+
+  // ---------- 累計統計（save.stats）----------
+  // 吞噬總數、圖鑑、星數、寶箱數等能從存檔推算的不另外存；其餘（頭目、狂熱、道具…）在各自的掛點 +1
+  function stats() {
+    if (!save.stats || typeof save.stats !== 'object' || Array.isArray(save.stats)) save.stats = {};
+    return save.stats;
+  }
+  const stat = (k) => +stats()[k] || 0;
+  function statBump(k, v) { const s = stats(); s[k] = (+s[k] || 0) + (v || 1); }
+  function statMax(k, v) { const s = stats(); if (v > (+s[k] || 0)) s[k] = v; }
+  // 吞物件很頻繁：隔 2 秒才寫一次存檔（同 missionBump 的做法）
+  let softAt = 0;
+  function softSave() {
+    if (Date.now() - softAt < 2000) return;
+    softAt = Date.now();
+    persist();
+  }
+
+  // ---------- 成就徽章牆 ----------
+  const dexKinds = () => Object.keys(H.KINDS).filter((k) => k !== 'building' && k !== 'treasure');
+  const starCount = (min) => Object.values(save.stars || {}).filter((v) => (+v || 0) >= min).length;
+  const ACH = [
+    { id: 'eat', icon: '🌀', name: '吞噬達人', th: [1000, 10000, 50000], desc: (n) => `累計吞噬 ${n} 個物件`, val: () => Object.values(save.dex || {}).reduce((t, v) => t + (+v || 0), 0) },
+    { id: 'clear', icon: '🚩', name: '闖關高手', th: [10, 30, 60], desc: (n) => `主線過關 ${n} 關`, val: () => starCount(1) },
+    { id: 'star3', icon: '⭐', name: '三星收藏家', th: [10, 30, 60], desc: (n) => `${n} 個關卡拿到 3 星`, val: () => starCount(3) },
+    { id: 'boss', icon: '👹', name: '頭目殺手', th: [1, 5, 15], desc: (n) => `打倒 ${n} 個頭目`, val: () => stat('bosses') },
+    { id: 'combo', icon: '🔥', name: '連擊大師', th: [30, 60, 100], desc: (n) => `單局最高連擊達 ${n}`, val: () => stat('maxCombo') },
+    { id: 'fever', icon: '💥', name: '狂熱分子', th: [5, 30, 100], desc: (n) => `觸發狂熱 ${n} 次`, val: () => stat('fevers') },
+    { id: 'dex', icon: '📖', name: '圖鑑收藏家', th: [30, 60, 'all'], all: () => dexKinds().length, desc: (n) => `圖鑑收錄 ${n} 種物件`, val: () => dexKinds().filter((k) => save.dex && save.dex[k]).length },
+    { id: 'daily', icon: '📅', name: '每日挑戰客', th: [3, 10, 30], desc: (n) => `完成 ${n} 次每日挑戰`, val: () => Object.values(save.daily || {}).filter((v) => +v > 0).length },
+    { id: 'checkin', icon: '📆', name: '簽到達人', th: [1, 3, 5], desc: (n) => `連續簽到滿 7 天 ${n} 輪`, val: () => stat('checkinRounds') },
+    { id: 'chest', icon: '🎁', name: '寶箱獵人', th: [1, 5, 10], desc: (n) => `開啟 ${n} 個星星寶箱`, val: () => save.chestsOpened | 0 },
+    { id: 'endless', icon: '♾️', name: '無盡挑戰者', th: [2000, 8000, 20000], desc: (n) => `無盡模式拿到 ${n} 分`, val: () => endlessSave().best },
+    { id: 'friend', icon: '⚔️', name: '好友對決', th: [1, 5, 20], desc: (n) => `好友挑戰獲勝 ${n} 次`, val: () => stat('chWins') },
+    { id: 'boost', icon: '🧪', name: '道具愛用者', th: [10, 50, 200], desc: (n) => `使用道具 ${n} 次`, val: () => stat('boosts') },
+    { id: 'gacha', icon: '🎰', name: '扭蛋玩家', th: [5, 20, 50], desc: (n) => `轉扭蛋 ${n} 次`, val: () => stat('gacha') },
+    { id: 'golden', icon: '✨', name: '尋寶高手', th: [1, 10, 50], desc: (n) => `吃到 ${n} 個金色寶物`, val: () => stat('golden') },
+    { id: 'event', icon: '🎃', name: '萬聖節勇者', th: [1], desc: () => '萬聖節活動全部通關', val: () => {
+      const st = (save.event && save.event.halloween && save.event.halloween.stars) || {};
+      let n = 0;
+      for (let i = 1; i <= H.EVENT_LEVEL_COUNT; i++) if (st[i]) n++;
+      return n >= H.EVENT_LEVEL_COUNT ? 1 : 0;
+    } },
+    { id: 'skin', icon: '🎨', name: '外框收集家', th: [5, 10, 'all'], all: () => SKINS.length, desc: (n) => `收集 ${n} 款黑洞外框`, val: () => (save.skins || []).length },
+    { id: 'shield', icon: '🛡️', name: '滴水不漏', th: [5, 20, 50], desc: (n) => `防護罩擋下「別吃」物件 ${n} 次`, val: () => stat('shieldBlocks') },
+  ];
+  const achTh = (a, i) => (a.th[i] === 'all' ? a.all() : a.th[i]);
+  const achVal = (a) => Math.floor(+a.val() || 0);
+  const achClaimed = (a) => Math.min(a.th.length, Math.max(0, (save.ach && +save.ach[a.id]) | 0));
+  const achReached = (a) => {
+    const v = achVal(a);
+    let n = 0;
+    while (n < a.th.length && v >= achTh(a, n)) n++;
+    return n;
+  };
+  const achMedal = (a, i) => (a.th.length === 1 ? 2 : i); // 只有 1 級的算金牌
+  const achReward = (a, i) => TIER_COINS[achMedal(a, i)];
+  const achClaimable = () => ACH.some((a) => achReached(a) > achClaimed(a));
+  // 達成新等級時跳 toast（不打斷遊戲）；載入時已達成的先記下來，不會一次跳一堆
+  const achSeen = {};
+  let achNext = 0;
+  function achCheck() {
+    let gain = false;
+    for (const a of ACH) {
+      const r = achReached(a);
+      if (achSeen[a.id] == null) { achSeen[a.id] = r; continue; }
+      if (r > achSeen[a.id]) {
+        toast(`🏅 成就：${a.name}（${TIER_ZH[achMedal(a, r - 1)]}）`, !$('modal').classList.contains('hidden'));
+        A.levelUp();
+        achSeen[a.id] = r;
+        gain = true;
+      }
+    }
+    if (gain) updateMenuBadges();
+  }
+  function achRow(a) {
+    const v = achVal(a), cl = achClaimed(a), rc = achReached(a), done = cl >= a.th.length, can = rc > cl;
+    const target = achTh(a, done ? a.th.length - 1 : cl);
+    const pct = done ? 100 : Math.min(100, (v / target) * 100);
+    const medals = a.th.map((_, i) => `<em class="${i < cl ? 'got' : i < rc ? 'rdy' : ''}">${TIER_ICON[achMedal(a, i)]}</em>`).join('');
+    return `<div class="ach${can ? ' can' : ''}${done ? ' done' : ''}">
+      <i class="ach-ic">${a.icon}</i>
+      <div class="ach-main">
+        <div class="ach-top"><b>${a.name}</b><span class="ach-medals">${medals}</span></div>
+        <div class="ach-desc">${a.desc(target)}</div>
+        <div class="ach-bar"><i style="width:${pct.toFixed(1)}%"></i><b>${Math.min(v, target)}/${target}</b></div>
+      </div>
+      <button class="ach-btn" data-act="achClaim" data-id="${a.id}" ${can ? '' : 'disabled'}>${done ? '✓ 已領' : can ? `領取<small>+${achReward(a, cl)}</small>` : '進行中'}</button>
+    </div>`;
+  }
+  const achSummary = () => {
+    let got = 0, all = 0, can = 0;
+    ACH.forEach((a) => { got += achClaimed(a); all += a.th.length; can += achReached(a) - achClaimed(a); });
+    return `已領 ${got} / ${all} 枚徽章${can ? `・<b class="record">${can} 枚可領取！</b>` : ''}`;
+  };
+  function achModal() {
+    showModal(`
+      <h2>成就徽章牆</h2>
+      <div class="coin-pill shop-coins"><i class="coin"></i><span>${save.coins}</span></div>
+      ${dexTabs('ach')}
+      <div class="m-note" id="achSum">${achSummary()}</div>
+      <div class="ach-list" id="achBox">${ACH.map(achRow).join('')}</div>
+      <div class="m-btns">
+        <button class="big-btn purple" id="achAll" data-act="achClaimAll" ${achClaimable() ? '' : 'disabled'}>一鍵領取</button>
+        <button class="big-btn ghost" data-act="close">關閉</button>
+      </div>`);
+  }
+  // 領獎後只重畫清單，不重開整個彈窗（捲動位置才不會跳回頂端）
+  function achRefresh() {
+    const box = $('achBox');
+    if (!box) return;
+    box.innerHTML = ACH.map(achRow).join('');
+    $('achSum').innerHTML = achSummary();
+    $('achAll').disabled = !achClaimable();
+    const pill = $('modalCard').querySelector('.shop-coins span');
+    if (pill) pill.textContent = save.coins;
+    updateMenuBadges();
+  }
+
+  // ---------- 無盡模式 ----------
+  const endlessSave = () => {
+    const s = save.endless && typeof save.endless === 'object' && !Array.isArray(save.endless) ? save.endless : (save.endless = {});
+    s.best = +s.best || 0;
+    s.bestTime = +s.bestTime || 0;
+    s.plays = +s.plays || 0;
+    return s;
+  };
+  const endlessOpen = () => save.unlocked >= ENDLESS_UNLOCK;
+  function updateEndlessBtn() {
+    const open = endlessOpen(), S = endlessSave();
+    $('btnEndless').classList.toggle('locked', !open);
+    $('endlessName').textContent = open ? '♾️ 無盡模式' : '🔒 無盡模式';
+    $('endlessInfo').textContent = open ? (S.best ? `最佳 ${S.best}` : '來挑戰看看') : `第 ${ENDLESS_UNLOCK - 1} 關過關後開放`;
+  }
+  // 場上還沒吃掉的一般物件數（炸彈、鑰匙、寶箱不算）
+  function aliveCount() {
+    let n = 0;
+    for (const e of G.ents) if (e.state !== 3 && e.state !== 4 && e.kind !== 'bomb' && e.kind !== 'key' && e.kind !== 'treasure') n++;
+    return n;
+  }
+  function endlessIntro() {
+    const S = endlessSave();
+    showModal(`
+      <div class="m-kicker">♾️ 無盡模式</div>
+      <h2>撐越久、吃越多！</h2>
+      <div class="en-rules">
+        <div>⏱ 開局 <b>${ENDLESS_TIME}</b> 秒，沒有任務，吃東西補時間（越大補越多，每個最多 +3 秒）</div>
+        <div>🌊 場地吃到剩 30% 就補下一波，每波換主題、物件越來越大</div>
+        <div>👹 每 ${ENDLESS_BOSS_GAP} 秒出現一隻頭目，吞掉 +${ENDLESS_BOSS_SEC} 秒</div>
+        <div>💣 吃到「別吃」照常扣時間；時間歸零就結束</div>
+      </div>
+      <div class="m-note">${S.best ? `最佳 <b>${S.best}</b> 分・最久撐了 ${S.bestTime} 秒` : '還沒有紀錄，來挑戰看看！'}</div>
+      <div class="m-dock m-row"><button class="big-btn ghost m-back" data-act="menu">返回</button><button class="big-btn" data-act="begin">開始！</button></div>`);
+  }
+  // 吃到東西補時間：一般物件 +0.3 秒，依大小（星星點數）增加，每個最多 +3 秒
+  const ENDLESS_TIME_CAP = 90;
+  function endlessEat(e) {
+    G.endless.eaten++;
+    // 3 點以下 0.3 秒，每多 1 點 +0.1，封頂 3 秒；每多一波少 6%（最低 40%），時間最多存到 90 秒，避免越玩越輕鬆
+    const decay = Math.max(0.4, 1 - 0.06 * (G.endless.wave - 1));
+    const sec = Math.min(3, 0.3 + Math.max(0, starPts(e) - 3) * 0.1) * decay;
+    G.time = Math.min(ENDLESS_TIME_CAP, G.time + sec);
+    if (sec >= 1) {
+      popup('+' + sec.toFixed(1) + ' 秒', 'combo', 30);
+      bumpTimer('bump-good');
+    }
+  }
+  function endlessScoreCheck() {
+    const E = G.endless, best = endlessSave().best;
+    if (E.record || !best || G.score <= best) return; // 第一次玩沒有紀錄可破
+    E.record = true;
+    $('hudChallenge').textContent = '新紀錄！';
+    popup('🏆 新紀錄！', 'combo', 90);
+    A.levelUp();
+    vibrate(25);
+  }
+  function endlessTick(dt) {
+    const E = G.endless;
+    E.elapsed += dt;
+    if (E.elapsed >= E.nextBoss) {
+      E.nextBoss += ENDLESS_BOSS_GAP;
+      if (!(E.boss && E.boss.state === 0)) spawnBoss(); // 上一隻還沒吃掉就不再生
+    }
+    if ((E.chk -= dt) > 0) return;
+    E.chk = 0.4;
+    const alive = aliveCount();
+    // 剩一半時先備好下一波（生成要算一下），剩 30% 時才擺出來
+    if (!E.next && alive <= E.waveN * (ENDLESS_REFILL + 0.2)) {
+      E.next = H.getEndlessWave(G.run, E.wave + 1);
+      E.items = H.layout(E.next);
+    }
+    if (alive <= Math.max(6, E.waveN * ENDLESS_REFILL)) spawnWave();
+  }
+  // 清掉已經沒有任何活物件的 InstancedMesh（越玩越多，不清會一直累積）
+  function pruneIms() {
+    G.ents = G.ents.filter((e) => e.state !== 3);
+    const live = new Set(G.ents.map((e) => e.im));
+    G.ims = G.ims.filter((im) => {
+      if (live.has(im)) return true;
+      world.remove(im);
+      im.dispose();
+      return false;
+    });
+  }
+  function spawnWave() {
+    const E = G.endless, w = E.wave + 1;
+    const L = E.next || H.getEndlessWave(G.run, w);
+    const items = E.items || H.layout(L);
+    E.next = E.items = null;
+    E.wave = w;
+    pruneIms();
+    // 黑洞附近、跟還在場上的物件重疊的位置不擺
+    const live = G.ents.filter((e) => e.state !== 4);
+    const keep = items.filter((p) => {
+      const r = H.KINDS[p.kind].r * (p.s || 1);
+      if (Math.hypot(p.x - hole.pos.x, p.z - hole.pos.z) < hole.vis * 2.2 + r + 1.5) return false;
+      return !live.some((e) => (p.x - e.pos.x) ** 2 + (p.z - e.pos.z) ** 2 < (r + e.r) ** 2 * 0.7);
+    });
+    const ents = addItems(keep);
+    ents.forEach((e) => { e.goal = false; e.spinner = -1; });
+    stackEnts(ents);
+    if (L.avoid && L.avoid.length && !G.avoid.length) { // 後面幾波開始出現炸彈
+      G.avoid = L.avoid.map(([kind, color]) => ({ kind, color: color || null, label: H.labelOf(kind, color), img: H.thumb(kind, color) }));
+      renderGoals();
+    }
+    G.xpUnit = Math.max(G.xpUnit, L.xpUnit || 0);
+    E.waveN = aliveCount();
+    if (Math.random() < GOLD_CHANCE_WAVE) pickGolden(ents);
+    const lv = $('hudLevel');
+    if (lv) lv.textContent = w;
+    banner(`第 ${w} 波・${L.name}`);
+    A.levelUp();
+    vibrate(20);
+  }
+  // 頭目：一隻放大的物件，比目前的黑洞大兩級左右，吞掉 +15 秒
+  function spawnBoss() {
+    const E = G.endless, half = G.half;
+    const bossR = Math.min(radiusOf(hole.size + 2) * 0.9, (G.L.maxR || half * 0.3) * 0.92);
+    const bad = ['bomb', 'key', 'treasure', 'building'];
+    const cands = Object.keys(H.KINDS).filter((k) => {
+      const d = H.KINDS[k];
+      return !d.walk && !d.w && d.r >= 0.3 && d.r <= 1.2 && !bad.includes(k) && !G.avoid.some((a) => a.kind === k);
+    }).sort((a, b) => Math.abs(Math.log(H.KINDS[a].r * 2.2 / bossR)) - Math.abs(Math.log(H.KINDS[b].r * 2.2 / bossR)));
+    const kind = cands[Math.floor(Math.random() * Math.min(6, cands.length))];
+    if (!kind) return;
+    const lim = half - bossR - 1;
+    let x = 0, z = 0;
+    for (let t = 0; t < 40; t++) {
+      x = (Math.random() * 2 - 1) * lim;
+      z = (Math.random() * 2 - 1) * lim;
+      if (Math.hypot(x - hole.pos.x, z - hole.pos.z) < 7) continue;
+      if (G.ents.every((e) => e.state === 3 || (x - e.pos.x) ** 2 + (z - e.pos.z) ** 2 > (bossR + e.r) ** 2 * 0.6)) break;
+    }
+    const im = new T.InstancedMesh(H.getGeo(kind), H.objMat, 1);
+    im.instanceMatrix.setUsage(T.DynamicDrawUsage);
+    im.castShadow = true;
+    im.frustumCulled = false;
+    world.add(im);
+    G.ims.push(im);
+    const e = makeEntity({ kind, x, z, yaw: Math.random() * PI * 2, s: bossR / H.KINDS[kind].r }, im, 0);
+    e.boss = true;
+    e.goal = false;
+    e.spinner = -1;
+    e.ph = Math.random() * 9;
+    e.glow = new T.Mesh(new T.RingGeometry(e.r * 1.0, e.r * 1.25 + 0.2, 40).rotateX(-PI / 2),
+      groundMat({ color: 0xff5a4f, emissive: 0xd32f2f, emissiveIntensity: 0.9, transparent: true, opacity: 0.6, depthWrite: false }));
+    e.glow.position.set(x, 0.015, z);
+    e.glow.userData.own = true;
+    world.add(e.glow);
+    G.ents.push(e);
+    writeMatrix(e);
+    E.boss = e;
+    banner('👹 頭目出現！', 'chest bad');
+    A.levelUp();
+    G.shake = 0.3;
+    vibrate([30, 30, 30]);
+  }
+  function animBoss(dt) {
+    const e = G.endless && G.endless.boss;
+    if (!e) return;
+    if (e.state !== 0) {
+      e.glow.visible = false;
+      return;
+    }
+    e.yaw += dt * 0.8;
+    writeMatrix(e);
+    const k = Math.sin(G.t * 5 + e.ph);
+    e.glow.scale.set(1 + k * 0.1, 1, 1 + k * 0.1);
+    e.glow.material.opacity = 0.5 + k * 0.2;
+  }
+  function endlessBossDown(e) {
+    const E = G.endless;
+    statBump('bosses');
+    if (!E) return;
+    E.bosses++;
+    E.boss = null;
+    G.time += ENDLESS_BOSS_SEC;
+    bumpTimer('bump-good');
+    popup(`打倒頭目！+${ENDLESS_BOSS_SEC} 秒`, 'combo', 60);
+    A.bossDown();
+    G.shake = 0.9;
+    G.hitstop = 0.14;
+    vibrate([40, 30, 80]);
+  }
+  // 時間歸零：結算（沒有續命）
+  function endlessOver() {
+    G.state = 'lost';
+    stopFever();
+    A.musicMood('');
+    A.musicDuck(4);
+    drag = null;
+    joyEnd();
+    const E = G.endless, S = endlessSave(), score = G.score, secs = Math.round(E.elapsed);
+    const record = score > S.best;
+    if (record) S.best = score;
+    S.bestTime = Math.max(S.bestTime, secs);
+    S.plays++;
+    const coins = Math.min(300, Math.floor(score / 50));
+    save.coins += coins; // 獎勵跟著結算一起存檔，動畫只負責顯示
+    persist();
+    G.share = { endless: true, id: 'endless', t: 0, s: score, label: '無盡模式' };
+    if (record && S.plays > 1) { A.win(); confetti(70); } else A.lose();
+    vibrate(record ? [30, 50, 30] : 200);
+    showModal(`
+      <div class="lose-ic">♾️</div>
+      <div class="m-kicker">無盡模式</div>
+      <h2>時間到！</h2>
+      <div class="final-score">${score}<small>分</small></div>
+      <div class="m-note">${record ? '<b class="record">🏆 新紀錄！</b>' : `最佳紀錄 ${S.best} 分`}</div>
+      <div class="en-stats">
+        <div><b>${secs}</b><span>存活秒數</span></div>
+        <div><b>${E.eaten}</b><span>吃掉個數</span></div>
+        <div><b>${E.maxCombo}</b><span>最高連擊</span></div>
+        <div><b>${E.wave}</b><span>抵達波數</span></div>
+      </div>
+      ${E.bosses || E.golden ? `<div class="m-note">${E.bosses ? `👹 打倒頭目 ${E.bosses} 隻　` : ''}${E.golden ? `✨ 金色寶物 ${E.golden} 個` : ''}</div>` : ''}
+      <div class="reward">+${coins} <i class="coin"></i></div>
+      <div class="m-note">獎勵 ＝ 分數 ÷ 50（最多 300）</div>
+      <div class="m-btns">
+        <button class="big-btn" data-act="retry">再玩一次</button>
+        <div class="m-row">
+          <button class="big-btn ghost" data-act="menu">主選單</button>
+          <button class="big-btn ghost share-btn" data-act="share">📤 挑戰朋友</button>
+        </div>
+        <div class="shop-msg good" id="shareMsg"></div>
+      </div>`);
+    setTimeout(() => { setCoins(save.coins, true); A.coin(); }, 700);
+    achCheck();
+  }
+  $('btnEndless').addEventListener('click', () => {
+    A.unlock();
+    A.click();
+    if (!endlessOpen()) {
+      A.bad();
+      toast(`🔒 第 ${ENDLESS_UNLOCK - 1} 關過關後開放`, true);
+      return;
+    }
+    startLevel('endless', false);
+  });
+  Object.assign(actions, {
+    dexTab(btn) { dexModal(btn.dataset.tab); },
+    achClaim(btn) {
+      const a = ACH.find((x) => x.id === btn.dataset.id);
+      if (!a) return;
+      const cl = achClaimed(a);
+      if (achReached(a) <= cl) return;
+      const from = btn.getBoundingClientRect(), rw = achReward(a, cl);
+      save.ach = save.ach || {};
+      save.ach[a.id] = cl + 1;
+      setCoins(save.coins + rw, true);
+      A.coin();
+      achRefresh();
+      flyCoins(from, document.querySelector('.shop-coins'), 6);
+    },
+    achClaimAll(btn) {
+      let total = 0;
+      save.ach = save.ach || {};
+      for (const a of ACH) {
+        for (let cl = achClaimed(a); achReached(a) > cl; cl++) {
+          total += achReward(a, cl);
+          save.ach[a.id] = cl + 1;
+        }
+      }
+      if (!total) return;
+      const from = btn.getBoundingClientRect();
+      setCoins(save.coins + total, true);
+      A.win();
+      achRefresh();
+      flyCoins(from, document.querySelector('.shop-coins'), 10);
+    },
+  });
 
   // ---------- 每日任務 ----------
   // 以日期字串當亂數種子（同一天、所有裝置抽到一樣的任務）
@@ -3194,6 +3747,7 @@
     if (!$('missionDot')) return;
     $('missionDot').classList.toggle('hidden', !missionClaimable());
     $('checkinDot').classList.toggle('hidden', !checkinCan());
+    $('dexDot').classList.toggle('hidden', !achClaimable()); // 圖鑑入口：有成就可領取時顯示紅點
     const o = save.chestsOpened | 0, s = totalStars(), ms = chestMs(o), ready = chestReady();
     $('chestText').textContent = `★ ${Math.min(s, ms)} / ${ms}`;
     $('chestFill').style.width = Math.min(100, (s / ms) * 100) + '%';
@@ -3431,6 +3985,7 @@
     const ch = G.challenge, left = Math.ceil(G.time), won = left > ch.t;
     G.share = { id: ch.id, t: left, s: final, label: chLabel(ch) };
     save.challenges = save.challenges || {};
+    if (won) statBump('chWins');
     const bonus = won && !save.challenges[ch.key] ? 50 : 0;
     if (bonus) { save.challenges[ch.key] = 1; save.coins += bonus; }
     persist();
@@ -3475,8 +4030,9 @@
     const sh = G.share;
     if (!sh) return;
     const base = location.href.split(/[?#]/)[0];
-    const url = `${base}?challenge=${encodeURIComponent(sh.id)}&t=${sh.t}&s=${sh.s}`;
-    const text = `我在${sh.label}剩 ${sh.t} 秒過關，你能贏我嗎？`;
+    // 無盡模式只是秀分數：連結開主頁就好
+    const url = sh.endless ? base : `${base}?challenge=${encodeURIComponent(sh.id)}&t=${sh.t}&s=${sh.s}`;
+    const text = sh.endless ? `我在無盡模式拿到 ${sh.s} 分，你能超越我嗎？` : `我在${sh.label}剩 ${sh.t} 秒過關，你能贏我嗎？`;
     const copied = () => {
       toast('已複製挑戰連結', true);
       const m = $('shareMsg');
@@ -3499,6 +4055,7 @@
       if (!info.can) return;
       const r = CHECKIN[info.idx], from = btn.getBoundingClientRect();
       save.checkin = { last: todayKey(), day: (info.idx + 1) % 7 };
+      if (info.idx === 6) statBump('checkinRounds'); // 連續簽滿 7 天算一輪
       let html;
       const ks = r.boost ? unlockedBoosts() : [];
       if (ks.length) {
@@ -3626,5 +4183,5 @@
   frame();
 
   // 除錯 / 自動測試用
-  window.__hole = { G, hole, save, startLevel, camera, renderer, scene, win, lose };
+  window.__hole = { G, hole, save, startLevel, camera, renderer, scene, win, lose, eaten, pickGolden, spawnWave, spawnBoss, endlessOver, achCheck, dexModal, actions };
 })();

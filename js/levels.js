@@ -1083,7 +1083,7 @@
     const mode = o.mode || (hard ? 'boss' : MODES[idx % MODES.length]);
     const boss = mode === 'boss', chase = mode === 'chase', keymaze = mode === 'keymaze';
     const theme = o.theme || GEN[(n * 7 + Math.floor(idx / 3)) % GEN.length];
-    const size = Math.min(38, 30 + Math.floor(idx / 8));
+    const size = o.size || Math.min(38, 30 + Math.floor(idx / 8));
     const h = size / 2;
     const MN = size >= 34 ? 7 : 5, cellW = size / MN; // 場地大就切更多格，岔路更多
     const maze = mode === 'maze' || keymaze ? makeMaze(MN, R, keymaze ? 0 : 0.22) : null;
@@ -1109,7 +1109,7 @@
     const t0 = [take((r) => r <= 0.3, 0.12 + R() * 0.16), take((r) => r <= 0.34, 0.25)].filter(Boolean);
     const tiers = [{ k: 0, kinds: t0.map((p) => ({ p, s: 1 })), r: 0.3 }];
     for (let k = 1; k < nt; k++) {
-      const tr = boss && k === nt - 1 ? 1.95 : TIER_R[k];
+      const tr = boss && k === nt - 1 ? 1.95 : TIER_R[k] * (o.tierMul || 1);
       // 挑原尺寸接近這層的物品，再放大到目標半徑（最多放大 4 倍）
       const bp = boss && k === nt - 1 && o.bossKind ? pool.find((x) => x[0] === o.bossKind && !used.has(x[0])) : null;
       if (bp) used.add(bp[0]);
@@ -1349,6 +1349,16 @@
     return Object.assign({ seed: n * 1013 + 7, start: [0, 0] }, L);
   }
 
+  // 無盡模式：第 w 波（w 從 1 起）。run 是這局的亂數種子；主題輪替、場地固定 32，物件尺寸（tierMul）與數量逐波增加
+  function getEndlessWave(run, w) {
+    const n = 300000 + (run % 5000) * 40 + w;
+    const L = genLevel(n, {
+      idx: Math.min(45, 2 + (w - 1) * 3), mode: 'normal', size: 32, tierMul: Math.min(1.8, 1 + (w - 1) * 0.1),
+      theme: GEN[(run + w * 3) % GEN.length], layout: ['rings', 'islands', 'sectors', 'blocks', 'clusters'][(run + w) % 5],
+    });
+    return Object.assign({ seed: n * 1013 + 7 }, L, { start: [0, 0] });
+  }
+
   // 萬聖節活動：6 關，固定種子（每次產生都一樣）。難度約主線 5～15 關，第 6 關是南瓜頭目；夜晚關沿用既有 night 關型
   const HALLOWEEN_THEME = { name: '萬聖夜', floor: 'spooky', pool: [['hcandy'], ['cookie'], ['jacko'], ['bat'], ['cupcake'], ['ghost'], ['barrel'], ['tomb'], ['crate'], ['cake', 'choc'], ['hay'], ['tree']] };
   const HALLOWEEN_BOSS_POOL = [['hcandy'], ['cookie'], ['jacko'], ['bat'], ['cupcake'], ['ghost'], ['barrel'], ['tomb'], ['crate'], ['hay'], ['pumpkin']];
@@ -1385,5 +1395,5 @@
     return L;
   }
 
-  Object.assign(H, { rng, FLOORS, groundTexture, layout, hiddenGoals, getLevel, getDaily, getEventLevel, EVENT_LEVEL_COUNT, simulate, checkReach, SPEED_K, LEVEL_COUNT: LEVELS.length });
+  Object.assign(H, { rng, FLOORS, groundTexture, layout, hiddenGoals, getLevel, getDaily, getEventLevel, getEndlessWave, EVENT_LEVEL_COUNT, simulate, checkReach, SPEED_K, LEVEL_COUNT: LEVELS.length });
 })();
