@@ -1063,7 +1063,7 @@ button {
 
 /* ---------- 主選單：四格功能磚＋寶箱進度 ---------- */
 .menu-bottom { gap: 12px; }
-.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
 .tile { position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 10px 2px 9px; border-radius: 20px; background: #fff; box-shadow: 0 5px 0 #d6cff0, 0 10px 18px rgba(43, 35, 80, 0.18); transition: transform 0.1s, box-shadow 0.1s; }
 .tile:active { transform: translateY(4px); box-shadow: 0 1px 0 #d6cff0, 0 4px 8px rgba(43, 35, 80, 0.18); }
 .t-ic { width: 42px; height: 42px; border-radius: 14px; display: grid; place-items: center; font-size: 23px; line-height: 1; }
@@ -1071,7 +1071,8 @@ button {
 .t-shop .t-ic { background: linear-gradient(180deg, #fce7f3, #fbcfe8); }
 .t-dex .t-ic { background: linear-gradient(180deg, #dcfce7, #bbf7d0); }
 .t-mission .t-ic { background: linear-gradient(180deg, #ffedd5, #fed7aa); }
-.t-lb { font-size: 13px; font-weight: 700; color: var(--ink); white-space: nowrap; }
+.t-checkin .t-ic { background: linear-gradient(180deg, #ede9fe, #ddd6fe); }
+.t-lb { font-size: 12px; font-weight: 700; color: var(--ink); white-space: nowrap; }
 .tile.done .t-lb { color: #15803d; }
 .t-ok { position: absolute; top: -5px; right: -5px; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-size: 12px; font-weight: 700; color: #fff; background: var(--good); border: 2px solid #fff; }
 .chest-bar { width: 100%; flex: none; padding: 8px 14px 8px 10px; gap: 10px; border-radius: 20px; background: linear-gradient(180deg, #fff8dc, #ffefb0); }
@@ -1088,3 +1089,53 @@ button {
   .level-grid { max-height: 120px; }
   .big-btn.green { padding: 13px 20px; }
 }
+
+/* ========== 失敗畫面「只差一點」 ========== */
+.near-hint { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 8px 0 4px; color: #e8590c; font-size: 26px; font-weight: 800; animation: pulse 1s infinite; }
+.near-hint img { width: 44px; height: 44px; }
+.near-list { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 4px; }
+.near-row { display: flex; align-items: center; gap: 8px; padding: 3px 8px 3px 4px; border-radius: 14px; background: #f5f2ff; }
+.near-row.best { background: #fff4e0; box-shadow: inset 0 0 0 2px #ffb347; }
+.near-row img { width: 34px; height: 34px; flex: none; }
+.near-bar { position: relative; flex: 1; height: 22px; border-radius: 11px; background: #dcd5f5; overflow: hidden; }
+.near-bar i { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #ffb347, #ff7a1a); border-radius: 11px; }
+.near-bar b { position: relative; display: block; text-align: center; font-size: 13px; line-height: 22px; color: var(--ink); }
+.big-btn.beat { animation: continueBeat 0.8s ease-in-out infinite; background: linear-gradient(180deg, #ffe08a, #ffc83d); color: var(--ink); box-shadow: 0 5px 0 #c77d00, 0 0 16px 3px rgba(255, 200, 61, 0.9); }
+@keyframes continueBeat { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.07); } }
+
+/* ========== 好友挑戰 ========== */
+.challenge-tag { position: absolute; top: calc(var(--safe-t) + 62px); left: 10px; padding: 3px 10px; border-radius: 10px; background: rgba(255, 71, 87, 0.9); color: #fff; font-size: 13px; font-weight: 700; box-shadow: 0 2px 0 rgba(0, 0, 0, 0.3); z-index: 2; pointer-events: none; }
+.challenge-tag.hidden { display: none; }
+.share-btn { margin-top: 2px; }
+.shop-msg.good { color: var(--good); min-height: 18px; }
+.toast.over { position: fixed; z-index: 70; top: calc(var(--safe-t) + 70px); }
+
+/* ========== 七日簽到 ========== */
+.ck-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0; }
+.ck { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 8px 2px; min-height: 76px; border-radius: 14px; background: #f5f2ff; border: 2px solid #e0d8fb; }
+.ck small { font-size: 12px; color: var(--ink-soft); font-weight: 700; }
+.ck b { display: flex; flex-direction: column; align-items: center; font-size: 15px; line-height: 1.2; }
+.ck .ck-ic { font-size: 20px; line-height: 1.1; }
+.ck.big { grid-column: span 2; background: linear-gradient(180deg, #fff8e1, #ffeab0); border-color: var(--gold); }
+.ck.today { background: #fff8e1; border-color: var(--gold); animation: pulse 1.1s infinite; box-shadow: 0 0 14px 2px rgba(255, 200, 61, 0.8); }
+.ck.done { opacity: 0.55; }
+.ck em { position: absolute; top: 2px; right: 6px; font-style: normal; font-weight: 800; color: var(--good); }
+
+/* ========== 萬聖節活動 ========== */
+.event-btn { display: block; width: 100%; margin-top: 10px; padding: 13px 8px; border: 0; border-radius: 26px; font: inherit; font-size: 20px; font-weight: 700; color: #fff; background: linear-gradient(90deg, #ff8f00, #e8590c 45%, #7e3ff2); box-shadow: 0 5px 0 #4a1d9e, 0 0 18px 3px rgba(255, 140, 0, 0.6); text-shadow: 0 2px 0 rgba(0, 0, 0, 0.3); cursor: pointer; animation: evGlow 1.6s ease-in-out infinite alternate; }
+.event-btn:active { transform: translateY(4px); box-shadow: 0 1px 0 #4a1d9e; }
+.event-btn.hidden { display: none; }
+@keyframes evGlow { from { filter: brightness(0.95); } to { filter: brightness(1.18); } }
+.ev-title { color: #e8590c; }
+.ev-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 12px 0; }
+.ev-lv { aspect-ratio: 1.3; border: 0; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; font: inherit; font-weight: 700; font-size: 26px; color: #fff; background: linear-gradient(180deg, #9b6bff, #5b2fc9); box-shadow: 0 4px 0 #3a1a8c; cursor: pointer; }
+.ev-lv:active { transform: translateY(3px); box-shadow: 0 1px 0 #3a1a8c; }
+.ev-lv .st { font-size: 13px; letter-spacing: 1px; color: rgba(255, 255, 255, 0.35); line-height: 1; margin-top: 2px; }
+.ev-lv .st .on { color: var(--gold); }
+.ev-lv.cur { background: linear-gradient(180deg, #ffa53d, #e8590c); box-shadow: 0 4px 0 #a33a00; animation: pulse 1.2s infinite; }
+.ev-lv.boss { font-size: 30px; }
+.ev-lv.locked { background: #eeeef2; box-shadow: 0 4px 0 #dddbe5; cursor: default; }
+.ev-lv.locked svg { width: 22px; height: 22px; fill: #b9b6c8; }
+.ev-rewards b { min-width: 70px; color: #e8590c; }
+.skin.eventlock { background: linear-gradient(180deg, #fff1e0, #fff); border-style: dashed; border-color: #ff8f00; }
+.skin.eventlock small { color: #e8590c; font-weight: 700; font-size: 11px; }
