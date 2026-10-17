@@ -352,10 +352,10 @@ button {
   padding: calc(var(--safe-t) + 14px) 18px calc(var(--safe-b) + 18px);
   background: linear-gradient(180deg, rgba(43, 35, 80, 0.55) 0%, rgba(43, 35, 80, 0.05) 38%, rgba(43, 35, 80, 0.05) 55%, rgba(43, 35, 80, 0.65) 100%);
 }
-.menu-top { display: flex; justify-content: space-between; align-items: center; }
+.menu-top { display: flex; justify-content: space-between; align-items: center; position: relative; z-index: 1; }
 .menu-top-r { display: flex; gap: 10px; }
 .round-btn.off { opacity: 0.45; }
-.logo { text-align: center; color: #fff; margin-top: -6vh; }
+.logo { text-align: center; color: #fff; margin-top: clamp(-6vh, calc((900px - 100vh) / 2), 0px); } /* 螢幕夠高才往上拉，矮的手機不會蓋到金幣 */
 .logo h1 {
   margin: 0;
   font-size: clamp(56px, 18vw, 92px);
