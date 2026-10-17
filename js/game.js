@@ -1208,8 +1208,8 @@
     if (sec !== G.shownSec) {
       G.shownSec = sec;
       showTimer();
-      if (sec <= 10 && sec > 0) A.tick(sec);
-      A.musicMood(sec <= 10 ? 'hurry' : '');
+      if (sec <= DANGER_SEC && sec > 0) dangerBeat(sec);
+      A.musicMood(sec <= DANGER_SEC ? 'hurry' : '');
     }
     if (G.time > 0) G.overtime = 0; // 等待結算時又加了時間：恢復正常遊戲
     if (G.time <= 0) {
@@ -2183,8 +2183,43 @@
     const bar = $('timeBar');
     bar.style.width = (ratio * 100).toFixed(1) + '%';
     bar.className = ratio > 0.5 ? '' : ratio > 0.2 ? 'mid' : 'low';
-    $('hudTimerWrap').classList.toggle('low', sec <= 10);
+    $('hudTimerWrap').classList.toggle('low', sec <= DANGER_SEC);
+    $('hudTimerWrap').classList.toggle('crit', sec <= 5 && sec > 0);
     $('hudTimerWrap').classList.toggle('frozen', G.boosts.freeze > 0);
+    setDanger(sec);
+  }
+
+  // ---------- 最後 15 秒：畫面四周紅光心跳、計時器每秒跳一下，最後 5 秒正中間大字倒數 ----------
+  const DANGER_SEC = 15;
+  let dangerLv = 0;
+  function setDanger(sec) {
+    const lv = G.state === 'playing' && sec > 0 && sec <= DANGER_SEC ? (sec <= 5 ? 2 : 1) : 0;
+    if (lv === dangerLv) return;
+    dangerLv = lv;
+    const el = $('dangerGlow');
+    el.classList.toggle('on', lv > 0);
+    el.classList.toggle('hot', lv === 2);
+  }
+  function dangerBeat(sec) {
+    if (G.state !== 'playing') return;
+    if (sec === DANGER_SEC && G.total > DANGER_SEC + 1) {
+      banner('最後 15 秒！', 'danger');
+      vibrate([40, 60, 40]);
+    }
+    if (sec > 10) A.heart();
+    else A.tick(sec);
+    if (sec <= 5) {
+      const el = document.createElement('div');
+      el.className = 'count-big';
+      el.textContent = sec;
+      $('fx').appendChild(el);
+      el.addEventListener('animationend', () => el.remove());
+      vibrate(25);
+    }
+    const t = $('hudTimerWrap');
+    t.classList.remove('beat');
+    void t.offsetWidth;
+    t.classList.add('beat');
   }
 
   // ---------- 道具：到指定關卡解鎖並送 1 個；數量用完後點擊會用金幣購買 ----------
@@ -2398,6 +2433,7 @@
   function pause() {
     if (G.state !== 'playing') return;
     G.state = 'paused';
+    setDanger(0);
     drag = null;
     joyEnd();
     pauseModal();
@@ -2406,6 +2442,7 @@
   function win() {
     G.state = 'won';
     stopFever();
+    setDanger(0);
     A.musicMood('');
     A.musicDuck(4);
     const ratio = G.time / G.total;
@@ -2676,6 +2713,7 @@
   function lose() {
     G.state = 'lost';
     stopFever();
+    setDanger(0);
     A.musicMood('');
     A.musicDuck(4);
     persist();
@@ -2718,6 +2756,7 @@
     resume() {
       closeModal();
       G.state = 'playing';
+      G.shownSec = -1;
       clock.getDelta();
     },
     retry() { startLevel(G.ref, true, G.challenge); },
@@ -2919,6 +2958,7 @@
     $('menuCoins').textContent = save.coins;
     $('hudCoins').textContent = save.coins;
     stopFever();
+    setDanger(0);
     updateMenuBadges();
     $('btnEvent').classList.toggle('hidden', !eventActive('halloween'));
     const dailyDone = !!(save.daily && save.daily[todayKey()]);
