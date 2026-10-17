@@ -192,6 +192,8 @@
   }
   if (save.music == null) save.music = save.muted ? 'off' : 'happy';
   A.setMuted(save.muted);
+  if (save.musicVol == null) save.musicVol = 0.5;
+  A.setMusicVol(save.musicVol);
   A.setMusic(save.music);
 
   // ---------- 渲染器 ----------
@@ -2273,7 +2275,7 @@
       </div>
       <div class="m-sec">設定</div>
       <div class="set-box">
-        <div class="set-row set-stack"><span>背景音樂</span>${musicSeg(' mini music')}</div>
+        <div class="set-row set-stack"><span>背景音樂</span>${musicSeg(' mini music')}${musicVolRow()}</div>
         <div class="set-row"><span>音效</span><button class="switch${save.muted ? '' : ' on'}" data-act="sound" aria-label="音效"><i></i></button></div>
         <div class="set-row"><span>操控方式</span><div class="seg mini">${Object.keys(CTRL_ZH).map((k) => `<button class="${save.ctrl === k ? 'on' : ''}" data-act="ctrl" data-ctrl="${k}">${CTRL_ZH[k]}</button>`).join('')}</div></div>
         <div class="set-row"><span>移動速度</span><b id="speedVal">×${speedMul().toFixed(2)}</b></div>
@@ -2297,10 +2299,15 @@
   function musicSeg(cls) {
     return `<div class="seg${cls || ''}">${[{ id: 'off', name: '關' }].concat(A.tracks).map((t) => `<button class="${save.music === t.id ? 'on' : ''}" data-act="music" data-music="${t.id}">${t.name}</button>`).join('')}</div>`;
   }
+  // 背景音樂音量滑桿
+  function musicVolRow() {
+    return `<div class="speed-row music-vol"><span>🔈</span><input type="range" id="musicVol" min="0" max="1" step="0.05" value="${save.musicVol}" aria-label="背景音樂音量"><span>🔊</span><b id="musicVolVal">${Math.round(save.musicVol * 100)}%</b></div>`;
+  }
   function musicModal() {
     showModal(`<h2>🎵 背景音樂</h2>
       <div class="m-btns">
         ${musicSeg()}
+        ${musicVolRow()}
         <div class="m-note">音效開關在旁邊的喇叭按鈕</div>
         <button class="big-btn" data-act="close">好</button>
       </div>`);
@@ -2727,6 +2734,12 @@
   }
   $('modal').addEventListener('input', (ev) => {
     if (ev.target.id === 'speedRange') setSpeed(parseFloat(ev.target.value));
+    if (ev.target.id === 'musicVol') {
+      save.musicVol = parseFloat(ev.target.value);
+      A.setMusicVol(save.musicVol);
+      $('musicVolVal').textContent = Math.round(save.musicVol * 100) + '%';
+      persist();
+    }
   });
 
   $('modal').addEventListener('click', (ev) => {
@@ -3101,6 +3114,8 @@
   function importDone() {
     if (save.music == null) save.music = save.muted ? 'off' : 'happy';
     A.setMuted(save.muted);
+    if (save.musicVol == null) save.musicVol = 0.5;
+    A.setMusicVol(save.musicVol);
     A.setMusic(save.music);
     showMenu();
     showModal(`<h2>存檔轉移完成！</h2><div class="m-note">${saveSummary(save)}</div>
