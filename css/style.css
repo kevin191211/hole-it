@@ -352,8 +352,10 @@ button {
   padding: calc(var(--safe-t) + 14px) 18px calc(var(--safe-b) + 18px);
   background: linear-gradient(180deg, rgba(43, 35, 80, 0.55) 0%, rgba(43, 35, 80, 0.05) 38%, rgba(43, 35, 80, 0.05) 55%, rgba(43, 35, 80, 0.65) 100%);
 }
-.menu-top { display: flex; justify-content: space-between; align-items: center; }
-.logo { text-align: center; color: #fff; margin-top: -6vh; }
+.menu-top { display: flex; justify-content: space-between; align-items: center; position: relative; z-index: 1; }
+.menu-top-r { display: flex; gap: 10px; }
+.round-btn.off { opacity: 0.45; }
+.logo { text-align: center; color: #fff; margin-top: clamp(-6vh, calc((900px - 100vh) / 2), 0px); } /* 螢幕夠高才往上拉，矮的手機不會蓋到金幣 */
 .logo h1 {
   margin: 0;
   font-size: clamp(56px, 18vw, 92px);
@@ -1003,6 +1005,10 @@ button {
 .set-box .m-note { text-align: center; margin-top: -2px; font-size: 12px; }
 .seg.mini { padding: 3px; border-radius: 14px; background: #ebe5ff; }
 .seg.mini button { flex: none; padding: 6px 16px; font-size: 15px; border-radius: 11px; }
+.set-row.set-stack { flex-direction: column; align-items: stretch; gap: 6px; }
+.seg.mini.music button { flex: 1; padding: 6px 0; }
+.music-vol span { font-size: 18px; }
+.music-vol b { width: 44px; text-align: right; font-size: 15px; color: var(--accent); }
 .switch { position: relative; width: 54px; height: 32px; border-radius: 16px; background: #d4cfe6; transition: background 0.2s; flex: none; }
 .switch i { position: absolute; left: 3px; top: 3px; width: 26px; height: 26px; border-radius: 50%; background: #fff; box-shadow: 0 2px 4px rgba(43, 35, 80, 0.3); transition: transform 0.2s; }
 .switch.on { background: var(--good); }
@@ -1177,3 +1183,16 @@ button {
   .m-dock { bottom: -16px; margin: 6px -16px -16px; padding: 10px 16px 16px; }
   .m-dock .big-btn { padding-top: 12px; padding-bottom: 12px; }
 }
+
+/* 最後 15 秒：四周紅光心跳、計時器跳動、最後 5 秒大字倒數 */
+#dangerGlow { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.4s; box-shadow: inset 0 0 70px 14px rgba(255, 40, 40, 0.7), inset 0 0 160px 36px rgba(200, 0, 0, 0.35); }
+#dangerGlow.on { opacity: 1; animation: dangerBeat 1s ease-out infinite; }
+#dangerGlow.hot { animation-duration: 0.5s; box-shadow: inset 0 0 90px 22px rgba(255, 30, 30, 0.85), inset 0 0 200px 48px rgba(200, 0, 0, 0.45); }
+@keyframes dangerBeat { 0% { opacity: 1; } 15% { opacity: 0.5; } 30% { opacity: 0.95; } 100% { opacity: 0.3; } }
+.timer.beat { animation: timerBeat 0.45s ease-out; }
+.timer.crit { color: #fff; background: linear-gradient(180deg, #e5484d, #b3263c); border-color: #ff9a9a; }
+@keyframes timerBeat { 0% { transform: scale(1.22); } 100% { transform: scale(1); } }
+.banner.danger { font-size: clamp(40px, 12vw, 64px); text-shadow: 0 5px 0 #b3263c, 0 12px 30px rgba(0, 0, 0, 0.35); }
+.count-big { position: absolute; left: 50%; top: 28%; font-size: clamp(110px, 34vw, 180px); font-weight: 700; line-height: 1; color: rgba(255, 255, 255, 0.92); -webkit-text-stroke: 3px #c81e3a; text-shadow: 0 8px 0 #8f1028, 0 0 40px rgba(255, 40, 60, 0.6); pointer-events: none; animation: countBig 0.9s cubic-bezier(0.2, 1.2, 0.4, 1) forwards; }
+@keyframes countBig { 0% { opacity: 0; transform: translate(-50%, -50%) scale(2.2); } 25% { opacity: 0.85; transform: translate(-50%, -50%) scale(1); } 100% { opacity: 0; transform: translate(-50%, -50%) scale(0.85); } }
+@media (prefers-reduced-motion: reduce) { #dangerGlow.on { animation: none; } .timer.beat { animation: none; } }

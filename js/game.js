@@ -239,15 +239,20 @@
     location.replace(NEW_HOME + location.search + '#save=' + encodeURIComponent(saveCode()));
     return;
   }
+  if (save.music == null) save.music = save.muted ? 'off' : 'happy';
   A.setMuted(save.muted);
+  if (save.musicVol == null) save.musicVol = 0.5;
+  A.setMusicVol(save.musicVol);
+  A.setMusic(save.music);
 
   // ---------- 渲染器 ----------
   const canvas = $('game');
   const renderer = new T.WebGLRenderer({ canvas, antialias: true, stencil: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isTouch ? 1.75 : 2));
+  // 手機：解析度上限 1.5 倍、陰影用較便宜的 PCF、貼圖各向異性上限 4（填充率是手機的主要瓶頸）
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isTouch ? 1.5 : 2));
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = T.PCFSoftShadowMap;
-  const maxAniso = renderer.capabilities.getMaxAnisotropy();
+  renderer.shadowMap.type = isTouch ? T.PCFShadowMap : T.PCFSoftShadowMap;
+  const maxAniso = Math.min(renderer.capabilities.getMaxAnisotropy(), isTouch ? 4 : 16);
 
   const scene = new T.Scene();
   const camera = new T.PerspectiveCamera(40, 1, 0.1, 500);
@@ -255,8 +260,8 @@
   scene.add(hemi);
   const sun = new T.DirectionalLight(0xffffff, 0.62);
   // 夜晚關：只靠黑洞上方這盞聚光燈照亮周圍
+  // 只在夜晚關加進場景：光源數會編進每個材質的 shader，強度 0 也照樣逐像素計算
   const spot = new T.SpotLight(0xfff1d0, 0, 0, 0.5, 0.6, 0);
-  scene.add(spot, spot.target);
   sun.castShadow = true;
   sun.shadow.mapSize.set(isTouch ? 1024 : 2048, isTouch ? 1024 : 2048);
   sun.shadow.bias = -0.0005;
@@ -760,7 +765,7 @@
       r: def.r * s, h: im.geometry.boundingBox.max.y * s, value: def.r * def.r * s * s,
       yaw: p.yaw, tilt: 0, axis: new T.Vector3(1, 0, 0), scale: 1, base: s, bob: 0,
       state: 0, vy: 0, spin: 0, supports: [], above: [], goal: false,
-      walk: def.walk ? { speed: def.walk * (0.8 + Math.random() * 0.4), dir: p.yaw, t: Math.random() * 3, ph: Math.random() * 9, pause: false } : null,
+      walk: def.walk ? { speed: def.walk * (0.8 + Math.random() * 0.4), dir: p.yaw, t: Math.random() * 3, ph: Math.random() * 9, pause: false, hop: def.hop || 1 } : null,
     };
   }
 
@@ -838,6 +843,8 @@
     hemi.intensity = L.night ? 0.06 : 0.5;
     sun.intensity = L.night ? 0.05 : 0.62;
     spot.intensity = L.night ? 1.6 : 0;
+    if (L.night) scene.add(spot, spot.target);
+    else scene.remove(spot, spot.target);
 
     const S = L.size;
     const ground = new T.Mesh(new T.PlaneGeometry(S, S).rotateX(-PI / 2), groundMat({ map: H.groundTexture(L, maxAniso) }));
@@ -990,9 +997,15 @@
 
   // ---------- 主迴圈 ----------
   const clock = new T.Clock();
-  function frame() {
+  // 蓋著對話框或在主選單時不必全速重畫（對話框的模糊背景每幀重算很耗電）
+  const FRAME_GAP = { paused: 1000 / 10, lost: 1000 / 15, menu: 1000 / 30 };
+  let lastFrame = 0;
+  function frame(now) {
     requestAnimationFrame(frame);
-    let dt = Math.min(clock.getDelta(), 0.05);
+    const gap = FRAME_GAP[G.state];
+    if (gap && now - lastFrame < gap - 2) return;
+    lastFrame = now;
+    let dt = Math.min(clock.getDelta(), gap ? 0.1 : 0.05);
     if (G.hitstop > 0) { // 頓幀：重擊瞬間畫面幾乎停住
       G.hitstop -= dt;
       dt *= 0.04;
@@ -1016,6 +1029,7 @@
     updateHoleMesh(dt);
     updateArrow(dt);
     updateCamera(dt);
+    renderer.shadowMap.autoUpdate = G.state !== 'paused';
     renderer.render(scene, camera);
   }
 
@@ -1215,7 +1229,8 @@
     if (sec !== G.shownSec) {
       G.shownSec = sec;
       showTimer();
-      if (sec <= 10 && sec > 0) A.tick();
+      if (sec <= DANGER_SEC && sec > 0) dangerBeat(sec);
+      A.musicMood(sec <= DANGER_SEC ? 'hurry' : '');
     }
     if (G.time > 0) G.overtime = 0; // 等待結算時又加了時間：恢復正常遊戲
     if (G.time <= 0) {
@@ -1249,7 +1264,7 @@
     for (const k in G.boosts) {
       if (G.boosts[k] > 0) {
         G.boosts[k] = Math.max(0, G.boosts[k] - dt);
-        if (!G.boosts[k]) refreshBoosters();
+        if (!G.boosts[k]) { refreshBoosters(); A.fxEnd(); }
       }
     }
     updateBoostRings();
@@ -1257,6 +1272,7 @@
       G.fx[k] -= dt;
       if (G.fx[k] <= 0) {
         delete G.fx[k];
+        A.fxEnd();
         popup(TREASURE.find((t) => t.id === k).name + ' 結束', 'info');
       }
     }
@@ -1320,25 +1336,34 @@
       levelFx.material.opacity = (1 - k) * 0.9;
     }
     // 黑洞下方的「Size N」標籤
-    const lab = $('sizeLabel');
+    const lab = labEls.size;
     if (G.state === 'playing' || G.state === 'intro' || G.state === 'won') {
       const sp = screenOf(hole.pos.x, 0, hole.pos.z + hole.vis * 1.42);
-      lab.style.transform = `translate(${sp.x}px, ${sp.y}px) translate(-50%, -50%)`;
-      lab.textContent = hole.prog >= 1 && radiusOf(hole.size + 1) > (G.L.maxR || G.half * 0.3)
+      setLabel(lab, sp, hole.prog >= 1 && radiusOf(hole.size + 1) > (G.L.maxR || G.half * 0.3)
         ? `等級 ${hole.size}｜最大`
-        : `等級 ${hole.size}｜還差 ${Math.max(0, xpNeed(hole.size) - hole.xp)} 分`;
-      lab.classList.remove('hidden');
-    } else lab.classList.add('hidden');
+        : `等級 ${hole.size}｜還差 ${Math.max(0, xpNeed(hole.size) - hole.xp)} 分`);
+    } else setHidden(lab, true);
     // 黑洞上方的倒數時間
-    const tl = $('timeLabel');
+    const tl = labEls.time;
     if (G.state === 'playing' || G.state === 'intro') {
       const sp = screenOf(hole.pos.x, 0, hole.pos.z - hole.vis * 1.75);
       const sec = Math.max(0, Math.ceil(G.time));
-      tl.style.transform = `translate(${sp.x}px, ${sp.y}px) translate(-50%, -50%)`;
-      tl.textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
-      tl.classList.toggle('warn', sec <= 10);
-      tl.classList.remove('hidden');
-    } else tl.classList.add('hidden');
+      setLabel(tl, sp, `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`);
+      if (tl._warn !== (sec <= 10)) tl.classList.toggle('warn', (tl._warn = sec <= 10));
+    } else setHidden(tl, true);
+  }
+  const labEls = { size: $('sizeLabel'), time: $('timeLabel') };
+  function setHidden(el, h) {
+    if (el._hid === h) return;
+    el._hid = h;
+    el.classList.toggle('hidden', h);
+  }
+  // 位置取到 0.5px、文字有變才寫，避免每幀觸發樣式重算
+  function setLabel(el, sp, text) {
+    const tf = `translate(${Math.round(sp.x * 2) / 2}px, ${Math.round(sp.y * 2) / 2}px) translate(-50%, -50%)`;
+    if (el._tf !== tf) el.style.transform = el._tf = tf;
+    if (el._tx !== text) el.textContent = el._tx = text;
+    setHidden(el, false);
   }
 
   // ---------- 防護罩、加速鞋拖尾 ----------
@@ -1530,16 +1555,25 @@
     }
     if (w.pause) return;
     const sp = w.speed * (flee ? 2 * (G.L.flee || 1) : 1);
-    const nx = p.x + Math.sin(w.dir) * sp * dt, nz = p.z + Math.cos(w.dir) * sp * dt;
-    const lim = G.half - e.r - 0.3;
-    if (Math.abs(nx) > lim || Math.abs(nz) > lim || inWall(nx, nz, e.r * 0.8)) {
-      w.dir += PI * (0.5 + Math.random());
-      return;
+    const lim = G.half - e.r - 0.3, wr = e.r * 0.8, stuckIn = inWall(p.x, p.z, wr);
+    // 能不能走到 (nx, nz)：已經在界外／牆裡（縮圈、生成重疊）時，只要不是更深入就放行，免得永遠卡死
+    const ok = (nx, nz) => (Math.abs(nx) <= lim || Math.abs(nx) < Math.abs(p.x))
+      && (Math.abs(nz) <= lim || Math.abs(nz) < Math.abs(p.z))
+      && (stuckIn || !inWall(nx, nz, wr));
+    // 撞到牆／場邊：從原方向往左右逐步偏轉找出路，會沿著牆邊跑而不是停住
+    let dir = null;
+    const side = w.ph % 2 < 1 ? 1 : -1;
+    for (const off of [0, 0.4, -0.4, 0.8, -0.8, 1.2, -1.2, 1.6, -1.6, 2.1, -2.1, 2.6, -2.6, PI]) {
+      const d = w.dir + off * side;
+      if (ok(p.x + Math.sin(d) * sp * dt, p.z + Math.cos(d) * sp * dt)) { dir = d; break; }
     }
-    p.x = nx;
-    p.z = nz;
+    if (dir === null) return;
+    if (!flee && dir !== w.dir) w.t = Math.max(w.t, 0.8); // 閒逛時轉向後先照新方向走一陣子
+    w.dir = dir;
+    p.x += Math.sin(dir) * sp * dt;
+    p.z += Math.cos(dir) * sp * dt;
     e.yaw = w.dir;
-    e.bob = Math.abs(Math.sin(G.t * (flee ? 15 : 9) + w.ph)) * 0.06;
+    e.bob = Math.abs(Math.sin(G.t * (flee ? 15 : 9) + w.ph)) * 0.06 * w.hop;
     e.dirty = true;
   }
 
@@ -1702,7 +1736,9 @@
       const grounded = p.y < 0.05 && e.supports.length === 0;
       if (!grounded) continue;
       if (e.walk) walk(e, dt);
-      let dx = hx - p.x, dz = hz - p.z, d = Math.hypot(dx, dz);
+      let dx = hx - p.x, dz = hz - p.z;
+      if (!magnet && !e.tilt && !e.dirty && dx * dx + dz * dz > (R + e.r) * (R + e.r)) continue;
+      let d = Math.sqrt(dx * dx + dz * dz);
       if (magnet && e.goal && !e.above.length && d < R * 3 + 7 && d > 0.05 && e.r <= R * 0.95 && goalOpen(e)) {
         const s = Math.min(d, (5 + R * 2) * dt);
         const nx = p.x + (dx / d) * s, nz = p.z + (dz / d) * s;
@@ -1779,6 +1815,7 @@
     if (e.kind === 'treasure') { openChest(); return; }
     missionBump('eat', 1);
     missionBump('combo', G.combo + 1, true);
+    const big = Math.min(1, e.r / hole.r); // 吞下的東西跟黑洞比有多大，給音效用
     dexAdd(e.kind);
     if (e.kind === 'key') openDoor(e.color);
     const gi = G.goals.findIndex((g) => g.got < g.need && match(e, g));
@@ -1787,17 +1824,22 @@
       g.got = Math.min(g.need, g.got + (g.kind === 'star' ? starPts(e) : 1));
       grow(e);
       feverEat();
-      A.pop(G.combo);
+      A.pop(G.combo, big);
       addScore(starPts(e), true);
       // 連吃獎勵：每連吃 25 個（每個間隔不到 1 秒）加 1 秒
       if ((G.combo + 1) % 25 === 0) {
         G.time += 1;
         popup('連吃 ×' + (G.combo + 1) + '　+1 秒', 'combo', 46);
         bumpTimer('bump-good');
-      } else if (G.combo >= 4 && G.combo % 5 === 4) popup('連吃 ×' + (G.combo + 1), 'combo', 46);
+        A.streak(true);
+      } else if (G.combo >= 4 && G.combo % 5 === 4) {
+        popup('連吃 ×' + (G.combo + 1), 'combo', 46);
+        A.streak(false);
+      }
       updateGoal(gi);
       if (G.L.boss === e.kind && e.base > 1) {
         popup('打倒頭目！', 'combo', 60);
+        A.bossDown();
         G.shake = 0.9;
         G.hitstop = 0.14;
         vibrate([40, 30, 80]);
@@ -1811,13 +1853,14 @@
       if (G.boosts.shield > 0) { // 防護罩：不扣時間
         popup('🛡️ 擋住了！', 'good');
         shieldHit();
+        A.shield();
       }
       else penalty(e);
       return;
     }
     grow(e);
     feverEat();
-    A.gulp(G.combo);
+    A.gulp(G.combo, big);
     addScore(starPts(e), false);
   }
 
@@ -2161,8 +2204,43 @@
     const bar = $('timeBar');
     bar.style.width = (ratio * 100).toFixed(1) + '%';
     bar.className = ratio > 0.5 ? '' : ratio > 0.2 ? 'mid' : 'low';
-    $('hudTimerWrap').classList.toggle('low', sec <= 10);
+    $('hudTimerWrap').classList.toggle('low', sec <= DANGER_SEC);
+    $('hudTimerWrap').classList.toggle('crit', sec <= 5 && sec > 0);
     $('hudTimerWrap').classList.toggle('frozen', G.boosts.freeze > 0);
+    setDanger(sec);
+  }
+
+  // ---------- 最後 15 秒：畫面四周紅光心跳、計時器每秒跳一下，最後 5 秒正中間大字倒數 ----------
+  const DANGER_SEC = 15;
+  let dangerLv = 0;
+  function setDanger(sec) {
+    const lv = G.state === 'playing' && sec > 0 && sec <= DANGER_SEC ? (sec <= 5 ? 2 : 1) : 0;
+    if (lv === dangerLv) return;
+    dangerLv = lv;
+    const el = $('dangerGlow');
+    el.classList.toggle('on', lv > 0);
+    el.classList.toggle('hot', lv === 2);
+  }
+  function dangerBeat(sec) {
+    if (G.state !== 'playing') return;
+    if (sec === DANGER_SEC && G.total > DANGER_SEC + 1) {
+      banner('最後 15 秒！', 'danger');
+      vibrate([40, 60, 40]);
+    }
+    if (sec > 10) A.heart();
+    else A.tick(sec);
+    if (sec <= 5) {
+      const el = document.createElement('div');
+      el.className = 'count-big';
+      el.textContent = sec;
+      $('fx').appendChild(el);
+      el.addEventListener('animationend', () => el.remove());
+      vibrate(25);
+    }
+    const t = $('hudTimerWrap');
+    t.classList.remove('beat');
+    void t.offsetWidth;
+    t.classList.add('beat');
   }
 
   // ---------- 道具：到指定關卡解鎖並送 1 個；數量用完後點擊會用金幣購買 ----------
@@ -2203,10 +2281,13 @@
   }
 
   function updateBoostRings() {
-    document.querySelectorAll('.booster.active').forEach((b) => {
-      const k = b.dataset.boost;
-      b.style.setProperty('--p', ((G.boosts[k] || 0) / BOOST[k].dur).toFixed(3));
-    });
+    for (const k in G.boosts) {
+      if (!(G.boosts[k] > 0)) continue;
+      const b = document.querySelector(`.booster.active[data-boost="${k}"]`);
+      if (!b) continue;
+      const p = (Math.round(G.boosts[k] / BOOST[k].dur * 200) / 200).toFixed(3);
+      if (b._p !== p) b.style.setProperty('--p', (b._p = p));
+    }
   }
 
   // 道具說明：長按道具顯示，放開後幾秒自動收起
@@ -2247,7 +2328,7 @@
     else if (save.coins >= cfg.cost) setCoins(save.coins - cfg.cost, true);
     else return nope('金幣不足');
     persist();
-    A.boost();
+    A.booster(k);
     G.boosts[k] = cfg.dur;
     missionBump('boost', 1);
     popup({ grow: '黑洞變大！', magnet: '閃電吸取！', zoom: '視野放大！', freeze: '時間暫停！', shoes: '加速！', shield: '防護罩！' }[k], 'info');
@@ -2332,6 +2413,7 @@
       </div>
       <div class="m-sec">設定</div>
       <div class="set-box">
+        <div class="set-row set-stack"><span>背景音樂</span>${musicSeg(' mini music')}${musicVolRow()}</div>
         <div class="set-row"><span>音效</span><button class="switch${save.muted ? '' : ' on'}" data-act="sound" aria-label="音效"><i></i></button></div>
         <div class="set-row"><span>操控方式</span><div class="seg mini">${Object.keys(CTRL_ZH).map((k) => `<button class="${save.ctrl === k ? 'on' : ''}" data-act="ctrl" data-ctrl="${k}">${CTRL_ZH[k]}</button>`).join('')}</div></div>
         <div class="set-row"><span>移動速度</span><b id="speedVal">×${speedMul().toFixed(2)}</b></div>
@@ -2351,9 +2433,28 @@
       <div class="m-note m-ver">版本 ${VERSION}・${BUILD}</div>`);
   }
 
+  // 背景音樂選擇：關、輕快、放鬆、電玩
+  function musicSeg(cls) {
+    return `<div class="seg${cls || ''}">${[{ id: 'off', name: '關' }].concat(A.tracks).map((t) => `<button class="${save.music === t.id ? 'on' : ''}" data-act="music" data-music="${t.id}">${t.name}</button>`).join('')}</div>`;
+  }
+  // 背景音樂音量滑桿
+  function musicVolRow() {
+    return `<div class="speed-row music-vol"><span>🔈</span><input type="range" id="musicVol" min="0" max="1" step="0.05" value="${save.musicVol}" aria-label="背景音樂音量"><span>🔊</span><b id="musicVolVal">${Math.round(save.musicVol * 100)}%</b></div>`;
+  }
+  function musicModal() {
+    showModal(`<h2>🎵 背景音樂</h2>
+      <div class="m-btns">
+        ${musicSeg()}
+        ${musicVolRow()}
+        <div class="m-note">音效開關在旁邊的喇叭按鈕</div>
+        <button class="big-btn" data-act="close">好</button>
+      </div>`);
+  }
+
   function pause() {
     if (G.state !== 'playing') return;
     G.state = 'paused';
+    setDanger(0);
     drag = null;
     joyEnd();
     pauseModal();
@@ -2362,6 +2463,9 @@
   function win() {
     G.state = 'won';
     stopFever();
+    setDanger(0);
+    A.musicMood('');
+    A.musicDuck(4);
     const ratio = G.time / G.total;
     const stars = ratio >= 0.4 ? 3 : ratio >= 0.18 ? 2 : 1;
     const reward = 20 + stars * 15;
@@ -2390,7 +2494,7 @@
     if (G.n + 1 >= save.unlocked) save.level = G.n + 1; // 重玩舊關不把「開始」拉回舊關
     save.coins += reward; // 獎勵跟著過關一起存檔，動畫只負責顯示
     persist();
-    A.win();
+    A.clear(stars);
     banner('完成！');
     confetti(stars >= 3 ? 90 : 60);
     vibrate([30, 50, 30]);
@@ -2432,7 +2536,7 @@
     persist();
     missionBump('daily', 1);
     G.share = { id: 'd-' + G.daily, t: Math.ceil(G.time), s: final, label: '每日挑戰' };
-    A.win();
+    A.clear(stars);
     banner('完成！');
     confetti(stars >= 3 ? 90 : 60);
     vibrate([30, 50, 30]);
@@ -2630,6 +2734,9 @@
   function lose() {
     G.state = 'lost';
     stopFever();
+    setDanger(0);
+    A.musicMood('');
+    A.musicDuck(4);
     persist();
     drag = null;
     joyEnd();
@@ -2670,6 +2777,7 @@
     resume() {
       closeModal();
       G.state = 'playing';
+      G.shownSec = -1;
       clock.getDelta();
     },
     retry() { startLevel(G.ref, true, G.challenge); },
@@ -2760,6 +2868,13 @@
       const late = G.lateEats.splice(0);
       for (const e of late) if (G.state === 'playing') eaten(e);
     },
+    music(btn) {
+      save.music = btn.dataset.music;
+      persist();
+      A.setMusic(save.music);
+      updateSoundBtn();
+      btn.parentNode.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === btn));
+    },
     ctrl(btn) {
       save.ctrl = btn.dataset.ctrl;
       persist();
@@ -2788,6 +2903,12 @@
   }
   $('modal').addEventListener('input', (ev) => {
     if (ev.target.id === 'speedRange') setSpeed(parseFloat(ev.target.value));
+    if (ev.target.id === 'musicVol') {
+      save.musicVol = parseFloat(ev.target.value);
+      A.setMusicVol(save.musicVol);
+      $('musicVolVal').textContent = Math.round(save.musicVol * 100) + '%';
+      persist();
+    }
   });
 
   $('modal').addEventListener('click', (ev) => {
@@ -2843,10 +2964,12 @@
 
   function updateSoundBtn() {
     $('btnSound').textContent = save.muted ? '🔇' : '🔊';
+    $('btnMusic').classList.toggle('off', save.music === 'off');
   }
 
   function showMenu() {
     closeModal();
+    A.musicMood('');
     $('hud').classList.add('hidden');
     $('fx').innerHTML = '';
     save.level = Math.min(save.level, save.unlocked);
@@ -2856,6 +2979,7 @@
     $('menuCoins').textContent = save.coins;
     $('hudCoins').textContent = save.coins;
     stopFever();
+    setDanger(0);
     updateMenuBadges();
     $('btnEvent').classList.toggle('hidden', !eventActive('halloween'));
     const dailyDone = !!(save.daily && save.daily[todayKey()]);
@@ -2888,6 +3012,7 @@
     updateSoundBtn();
     A.click();
   });
+  $('btnMusic').addEventListener('click', () => { A.unlock(); A.click(); musicModal(); });
   $('btnPause').addEventListener('click', () => { A.click(); pause(); });
 
   // ---------- 金幣飛入動畫：從某個位置飛到金幣顯示框 ----------
@@ -3427,7 +3552,11 @@
       </div>`);
   }
   function importDone() {
+    if (save.music == null) save.music = save.muted ? 'off' : 'happy';
     A.setMuted(save.muted);
+    if (save.musicVol == null) save.musicVol = 0.5;
+    A.setMusicVol(save.musicVol);
+    A.setMusic(save.music);
     showMenu();
     showModal(`<h2>存檔轉移完成！</h2><div class="m-note">${saveSummary(save)}</div>
       <div class="m-btns"><button class="big-btn" data-act="close">開始玩</button></div>`);
