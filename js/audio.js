@@ -350,6 +350,49 @@
       tone(990, 0.22, 'triangle', 0.22, null, 0.12);
     },
     win() { [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.28, 'triangle', 0.24, null, i * 0.11)); },
+    // 過關號角：上行琶音 → C、F、G、C 和弦 → 結算視窗（1.1 秒）每顆星叮一聲 → 拍手歡呼、亮晶晶
+    clear(stars) {
+      // 聲部多，整體壓到一半，跟其他音效差不多大聲
+      const T = (f, d, ty, v, sl, de) => tone(f, d, ty, v * 0.5, sl, de);
+      const N = (d, v, c, ty, de) => noise(d, v * 0.5, c, ty, de);
+      const chord = (fs, d, len, v) => fs.forEach((f, i) => {
+        T(f, len, 'triangle', v, null, d);
+        if (i === fs.length - 1) T(f, len * 0.8, 'square', v * 0.3, null, d);
+      });
+      const kick = (d) => T(150, 0.18, 'sine', 0.45, 45, d);
+      const snare = (d) => N(0.12, 0.3, 1800, 'bandpass', d);
+      [392, 523, 659, 784].forEach((f, i) => {
+        T(f, 0.12, 'square', 0.07, null, i * 0.08);
+        T(f, 0.12, 'triangle', 0.16, null, i * 0.08);
+      });
+      chord([523, 659, 784], 0.36, 0.24, 0.13);
+      kick(0.36);
+      T(131, 0.25, 'sine', 0.3, null, 0.36);
+      chord([698, 880, 1047], 0.6, 0.12, 0.12);
+      snare(0.6);
+      chord([784, 988, 1175], 0.72, 0.12, 0.12);
+      snare(0.72);
+      // 最後的大和弦：拉長，配低音、大鼓、鈸
+      chord([523, 659, 784, 1047], 0.86, 1.1, 0.13);
+      T(131, 0.9, 'sine', 0.32, null, 0.86);
+      kick(0.86);
+      N(1.2, 0.22, 6000, 'highpass', 0.86);
+      // 派對哨子
+      T(1100, 0.3, 'sine', 0.07, 2300, 0.95);
+      // 星星：跟著結算視窗的星星彈出
+      [1319, 1568, 2093].slice(0, stars || 1).forEach((f, i) => {
+        const d = 1.32 + i * 0.18;
+        T(f, 0.4, 'sine', 0.18, null, d);
+        T(f * 2, 0.25, 'sine', 0.06, null, d);
+      });
+      // 拍手歡呼：一串隨機的短促拍手聲，越後面越稀疏
+      for (let i = 0; i < 34; i++) {
+        const d = 0.9 + Math.pow(Math.random(), 1.6) * 1.8;
+        N(0.035, 0.22 * (1 - (d - 0.9) / 2.2), 1100 + Math.random() * 900, 'bandpass', d);
+      }
+      // 亮晶晶
+      for (let i = 0; i < (stars >= 3 ? 12 : 7); i++) T(2400 + Math.random() * 1800, 0.18, 'sine', 0.05, null, 0.95 + Math.random() * 1.3);
+    },
     lose() { [392, 330, 262, 196].forEach((f, i) => tone(f, 0.32, 'sine', 0.24, null, i * 0.17)); },
   };
 })();

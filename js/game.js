@@ -2436,7 +2436,7 @@
     if (G.n + 1 >= save.unlocked) save.level = G.n + 1; // 重玩舊關不把「開始」拉回舊關
     save.coins += reward; // 獎勵跟著過關一起存檔，動畫只負責顯示
     persist();
-    A.win();
+    A.clear(stars);
     banner('完成！');
     confetti(stars >= 3 ? 90 : 60);
     vibrate([30, 50, 30]);
@@ -2478,7 +2478,7 @@
     persist();
     missionBump('daily', 1);
     G.share = { id: 'd-' + G.daily, t: Math.ceil(G.time), s: final, label: '每日挑戰' };
-    A.win();
+    A.clear(stars);
     banner('完成！');
     confetti(stars >= 3 ? 90 : 60);
     vibrate([30, 50, 30]);
